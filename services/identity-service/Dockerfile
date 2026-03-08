@@ -19,7 +19,7 @@ RUN npm prune --omit=dev
 FROM node:20-alpine
 
 # FIX: cần openssl cho prisma
-RUN apk add --no-cache openssl1.1-compat
+RUN apk add --no-cache openssl
 
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
