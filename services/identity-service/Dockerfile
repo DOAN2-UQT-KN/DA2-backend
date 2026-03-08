@@ -1,5 +1,5 @@
 # -------- builder --------
-FROM node:20-alpine AS builder
+FROM node:18.19.1-alpine AS builder
 
 WORKDIR /app
 
@@ -21,6 +21,9 @@ RUN npm prune --omit=dev
 
 # -------- runtime --------
 FROM node:20-alpine
+
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
 
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
