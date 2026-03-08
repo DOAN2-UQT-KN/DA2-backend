@@ -1,0 +1,69 @@
+// Prisma schema for Identity Service
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id                String  @id @default(uuid()) @db.Uuid
+    email             String  @unique
+    name              String
+    password          String
+    avatar            String?
+    bio               String?
+    emailVerified     Boolean @default(false)
+    verificationToken String?
+    roleId            String  @db.Uuid
+
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    @@index([email])
+    @@index([roleId])
+    @@index([deletedAt])
+    @@map("users")
+}
+
+model Role {
+    id          String  @id @default(uuid()) @db.Uuid
+    name        String  @unique
+    description String?
+
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    @@map("roles")
+}
+
+model PermissionSet {
+    id          String   @id @default(uuid()) @db.Uuid
+    name        String   @unique
+    description String?
+    permissions String[] // Array of Permission enum values
+
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    @@map("permission_sets")
+}
+
+model RolePermissionSet {
+    id              String @id @default(uuid()) @db.Uuid
+    roleId          String @db.Uuid
+    permissionSetId String @db.Uuid
+
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    @@unique([roleId, permissionSetId])
+    @@map("role_permission_sets")
+}
