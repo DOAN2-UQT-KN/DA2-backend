@@ -65,7 +65,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./services/identity-service
           file: ./services/identity-service/Dockerfile
           push: true
           build-args: |
