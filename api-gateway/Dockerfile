@@ -8,14 +8,17 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Install dependencies
-RUN npm ci --only=production && \
+RUN npm ci && \
     npm cache clean --force
 
 # Copy source code
 COPY . .
 
-# Build TypeScript (if applicable)
-RUN if [ -f "tsconfig.json" ]; then npm run build 2>/dev/null || true; fi
+# Build TypeScript
+RUN npm run build
+
+# Remove devDependencies for runtime image
+RUN npm prune --omit=dev
 
 # Production stage
 FROM node:20-alpine
@@ -30,9 +33,8 @@ WORKDIR /app
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
 
-# Copy dist folder if it exists, otherwise copy source
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist 2>/dev/null || \
-COPY --from=builder --chown=nodejs:nodejs /app/src ./src
+# Copy built application
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
 # Switch to non-root user
 USER nodejs
