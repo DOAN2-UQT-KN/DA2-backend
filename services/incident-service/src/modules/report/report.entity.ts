@@ -1,0 +1,25 @@
+import { Report } from "@prisma/client";
+import { ReportResponse } from "./report.dto";
+
+// Type-based entity
+export type ReportEntity = Report;
+
+// Helper function for conversion
+export const toReportResponse = (
+  entity: ReportEntity,
+  distance?: number,
+): ReportResponse => ({
+  id: entity.id,
+  userId: entity.userId,
+  title: entity.title,
+  description: entity.description,
+  wasteType: entity.wasteType,
+  severityLevel: entity.severityLevel,
+  latitude: entity.latitude,
+  longitude: entity.longitude,
+  status: entity.status,
+  aiVerified: entity.aiVerified,
+  createdAt: entity.createdAt,
+  updatedAt: entity.updatedAt,
+  ...(distance !== undefined && { distance }),
+});
