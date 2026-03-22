@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { keysToCamelCase } from "../utils/case-converter";
+import { keysToCamelCase, keysToSnakeCase } from "../utils/case-converter";
 
 /**
  * Converts incoming request body keys from snake_case to camelCase.
@@ -17,9 +17,9 @@ export const camelCaseRequestBody = (
 };
 
 /**
- * Wraps res.json to convert all response payload keys to camelCase.
+ * Wraps res.json to convert all response payload keys to snake_case.
  */
-export const camelCaseResponseBody = (
+export const snakeCaseResponseBody = (
   _req: Request,
   res: Response,
   next: NextFunction,
@@ -27,7 +27,7 @@ export const camelCaseResponseBody = (
   const originalJson = res.json.bind(res);
 
   res.json = ((body: unknown) =>
-    originalJson(keysToCamelCase(body))) as typeof res.json;
+    originalJson(keysToSnakeCase(body))) as typeof res.json;
 
   next();
 };

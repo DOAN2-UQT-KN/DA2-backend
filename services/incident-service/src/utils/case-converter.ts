@@ -1,4 +1,5 @@
 const SNAKE_CASE_REGEX = /_([a-z])/g;
+const CAMEL_CASE_REGEX = /([a-z0-9])([A-Z])/g;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (value === null || typeof value !== "object") {
@@ -10,6 +11,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 
 export const toCamelCase = (value: string): string =>
   value.replace(SNAKE_CASE_REGEX, (_, letter: string) => letter.toUpperCase());
+
+export const toSnakeCase = (value: string): string =>
+  value.replace(CAMEL_CASE_REGEX, "$1_$2").toLowerCase();
 
 export const keysToCamelCase = <T>(input: T): T => {
   if (Array.isArray(input)) {
@@ -24,6 +28,24 @@ export const keysToCamelCase = <T>(input: T): T => {
 
   for (const [key, value] of Object.entries(input)) {
     transformed[toCamelCase(key)] = keysToCamelCase(value);
+  }
+
+  return transformed as T;
+};
+
+export const keysToSnakeCase = <T>(input: T): T => {
+  if (Array.isArray(input)) {
+    return input.map((item) => keysToSnakeCase(item)) as T;
+  }
+
+  if (!isPlainObject(input)) {
+    return input;
+  }
+
+  const transformed: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(input)) {
+    transformed[toSnakeCase(key)] = keysToSnakeCase(value);
   }
 
   return transformed as T;

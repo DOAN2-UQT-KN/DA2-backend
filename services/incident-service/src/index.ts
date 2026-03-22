@@ -7,7 +7,7 @@ import reportRoutes from "./modules/report/report.routes";
 import { errorHandler } from "./middleware/error.middleware";
 import {
   camelCaseRequestBody,
-  camelCaseResponseBody,
+  snakeCaseResponseBody,
 } from "./middleware/case-transform.middleware";
 
 dotenv.config();
@@ -27,7 +27,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(camelCaseRequestBody);
-app.use(camelCaseResponseBody);
+app.use(snakeCaseResponseBody);
 
 // Health check endpoint
 app.get("/health", (_req, res) => {
