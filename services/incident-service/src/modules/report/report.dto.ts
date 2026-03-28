@@ -74,3 +74,13 @@ export interface PaginatedReportsResponse {
   limit: number;
   totalPages: number;
 }
+
+/** Status of background jobs tied to a report (e.g. AI analysis queue). */
+export interface ReportBackgroundJobsStatusResponse {
+  /** True when no ANALYZE_REPORT jobs are pending or in process for this report. */
+  allDone: boolean;
+  /** Total ANALYZE_REPORT rows in DB for this report (any terminal or active state). */
+  jobCount: number;
+  /** Jobs still queued or running. */
+  pendingOrInProcessCount: number;
+}

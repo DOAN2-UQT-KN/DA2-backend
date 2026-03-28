@@ -26,6 +26,17 @@ router.get("/search", authenticate, reportController.searchReports);
 router.get("/my", authenticate, reportController.getMyReports);
 
 /**
+ * @route   GET /api/v1/reports/:id/background-jobs/status
+ * @desc    Check if all background jobs for this report are done (no pending/in-process)
+ * @access  Private
+ */
+router.get(
+  "/:id/background-jobs/status",
+  authenticate,
+  reportController.getReportBackgroundJobsStatus,
+);
+
+/**
  * @route   GET /api/v1/reports/:id
  * @desc    Get report with full details
  * @access  Private

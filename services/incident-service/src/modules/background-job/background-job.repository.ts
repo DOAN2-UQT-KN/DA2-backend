@@ -161,6 +161,39 @@ export class BackgroundJobRepository {
     return result.count > 0;
   }
 
+  /**
+   * Count ANALYZE_REPORT jobs for a report (payload.reportId).
+   */
+  async countAnalyzeReportJobsForReport(reportId: string): Promise<{
+    total: number;
+    pendingOrInProcess: number;
+  }> {
+    const reportPayload = {
+      jobType: BackgroundJobType.ANALYZE_REPORT,
+      payload: {
+        path: ["reportId"],
+        equals: reportId,
+      },
+    };
+
+    const [total, pendingOrInProcess] = await Promise.all([
+      prisma.backgroundJob.count({ where: reportPayload }),
+      prisma.backgroundJob.count({
+        where: {
+          ...reportPayload,
+          status: {
+            in: [
+              GlobalStatus._STATUS_PENDING,
+              GlobalStatus._STATUS_INPROCESS,
+            ],
+          },
+        },
+      }),
+    ]);
+
+    return { total, pendingOrInProcess };
+  }
+
   async cancelPendingAnalyzeJobs(reportId: string): Promise<number> {
     const result = await prisma.backgroundJob.updateMany({
       where: {

@@ -8,6 +8,7 @@ import {
   ReportResponse,
   ReportDetailResponse,
   PaginatedReportsResponse,
+  ReportBackgroundJobsStatusResponse,
 } from "./report.dto";
 import { reportMediaRepository } from "./report_media.repository";
 import {
@@ -18,6 +19,7 @@ import {
 import prisma from "../../config/prisma.client";
 import { randomUUID } from "node:crypto";
 import { reportAnalysisQueueService } from "./queue/report-analysis-queue.service";
+import { backgroundJobRepository } from "../background-job/background-job.repository";
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 
 /** Admin moderation: report is banned (same numeric value as GlobalStatus._STATUS_REJECTED). */
@@ -132,6 +134,22 @@ export class ReportService {
   async getReportById(id: string): Promise<ReportResponse | null> {
     const report = await reportRepository.findById(id);
     return report ? toReportResponse(report) : null;
+  }
+
+  async getReportBackgroundJobsStatus(
+    reportId: string,
+  ): Promise<ReportBackgroundJobsStatusResponse | null> {
+    const report = await reportRepository.findById(reportId);
+    if (!report) return null;
+
+    const { total, pendingOrInProcess } =
+      await backgroundJobRepository.countAnalyzeReportJobsForReport(reportId);
+
+    return {
+      allDone: pendingOrInProcess === 0,
+      jobCount: total,
+      pendingOrInProcessCount: pendingOrInProcess,
+    };
   }
 
   async getReportDetail(id: string): Promise<ReportDetailResponse | null> {

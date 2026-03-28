@@ -19,14 +19,6 @@ export class ReportAnalysisQueueService {
       payload,
     );
   }
-
-  async reenqueueAnalysis(
-    reportId: string,
-    reportMediaFileIds: string[],
-  ): Promise<void> {
-    await backgroundJobRepository.cancelPendingAnalyzeJobs(reportId);
-    await this.enqueueAnalysis(reportId, reportMediaFileIds);
-  }
 }
 
 export const reportAnalysisQueueService = new ReportAnalysisQueueService();

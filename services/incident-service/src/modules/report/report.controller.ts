@@ -106,6 +106,42 @@ export class ReportController {
   };
 
   /**
+   * Whether all background jobs for this report (e.g. AI analysis) are finished
+   * (nothing pending or in process).
+   */
+  getReportBackgroundJobsStatus = [
+    param("id").isUUID().withMessage("Report ID must be a valid UUID"),
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      try {
+        if (!req.user?.userId) {
+          return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+        }
+
+        const backgroundJobs = await reportService.getReportBackgroundJobsStatus(
+          req.params.id,
+        );
+
+        if (!backgroundJobs) {
+          return sendError(res, HTTP_STATUS.REPORT_NOT_FOUND);
+        }
+
+        sendSuccess(res, HTTP_STATUS.OK, { backgroundJobs });
+      } catch (error) {
+        console.error("Get report background jobs status error:", error);
+        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      }
+    },
+  ];
+
+  /**
    * Update a report
    */
   updateReport = [
