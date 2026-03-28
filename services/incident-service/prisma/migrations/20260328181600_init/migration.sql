@@ -56,21 +56,6 @@ CREATE TABLE "media" (
 );
 
 -- CreateTable
-CREATE TABLE "report_results" (
-    "id" UUID NOT NULL,
-    "report_id" UUID NOT NULL,
-    "submitted_by_manager_id" UUID NOT NULL,
-    "description" TEXT,
-    "status" INTEGER NOT NULL DEFAULT 6,
-    "created_by" UUID,
-    "updated_by" UUID,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "report_results_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "report_media_files" (
     "id" UUID NOT NULL,
     "report_id" UUID,
@@ -82,7 +67,6 @@ CREATE TABLE "report_media_files" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
     "deleted_at" TIMESTAMP(3),
-    "reportResultId" UUID,
 
     CONSTRAINT "report_media_files_pkey" PRIMARY KEY ("id")
 );
@@ -131,6 +115,51 @@ CREATE TABLE "campaign_joining_requests" (
     "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "campaign_joining_requests_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "campaign_submissions" (
+    "id" UUID NOT NULL,
+    "campaign_id" UUID NOT NULL,
+    "submitted_by" UUID NOT NULL,
+    "title" VARCHAR(200),
+    "description" TEXT,
+    "status" INTEGER NOT NULL DEFAULT 12,
+    "created_by" UUID,
+    "updated_by" UUID,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
+
+    CONSTRAINT "campaign_submissions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "campaign_results" (
+    "id" UUID NOT NULL,
+    "campaign_submission_id" UUID NOT NULL,
+    "title" VARCHAR(200) NOT NULL,
+    "description" TEXT,
+    "created_by" UUID,
+    "updated_by" UUID,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
+
+    CONSTRAINT "campaign_results_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "campaign_result_files" (
+    "id" UUID NOT NULL,
+    "campaign_result_id" UUID NOT NULL,
+    "media_id" UUID NOT NULL,
+    "created_by" UUID,
+    "updated_by" UUID,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "campaign_result_files_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -227,12 +256,6 @@ CREATE INDEX "media_type_idx" ON "media"("type");
 CREATE INDEX "media_deleted_at_idx" ON "media"("deleted_at");
 
 -- CreateIndex
-CREATE INDEX "report_results_report_id_idx" ON "report_results"("report_id");
-
--- CreateIndex
-CREATE INDEX "report_results_submitted_by_manager_id_idx" ON "report_results"("submitted_by_manager_id");
-
--- CreateIndex
 CREATE INDEX "report_media_files_report_id_idx" ON "report_media_files"("report_id");
 
 -- CreateIndex
@@ -258,6 +281,30 @@ CREATE INDEX "campaign_joining_requests_volunteer_id_idx" ON "campaign_joining_r
 
 -- CreateIndex
 CREATE INDEX "campaign_joining_requests_status_idx" ON "campaign_joining_requests"("status");
+
+-- CreateIndex
+CREATE INDEX "campaign_submissions_campaign_id_idx" ON "campaign_submissions"("campaign_id");
+
+-- CreateIndex
+CREATE INDEX "campaign_submissions_submitted_by_idx" ON "campaign_submissions"("submitted_by");
+
+-- CreateIndex
+CREATE INDEX "campaign_submissions_status_idx" ON "campaign_submissions"("status");
+
+-- CreateIndex
+CREATE INDEX "campaign_submissions_deleted_at_idx" ON "campaign_submissions"("deleted_at");
+
+-- CreateIndex
+CREATE INDEX "campaign_results_campaign_submission_id_idx" ON "campaign_results"("campaign_submission_id");
+
+-- CreateIndex
+CREATE INDEX "campaign_results_deleted_at_idx" ON "campaign_results"("deleted_at");
+
+-- CreateIndex
+CREATE INDEX "campaign_result_files_campaign_result_id_idx" ON "campaign_result_files"("campaign_result_id");
+
+-- CreateIndex
+CREATE INDEX "campaign_result_files_media_id_idx" ON "campaign_result_files"("media_id");
 
 -- CreateIndex
 CREATE INDEX "report_issues_report_id_idx" ON "report_issues"("report_id");
@@ -290,13 +337,7 @@ CREATE INDEX "background_jobs_status_run_after_idx" ON "background_jobs"("status
 ALTER TABLE "reports" ADD CONSTRAINT "reports_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "report_results" ADD CONSTRAINT "report_results_report_id_fkey" FOREIGN KEY ("report_id") REFERENCES "reports"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "report_media_files" ADD CONSTRAINT "report_media_files_report_id_fkey" FOREIGN KEY ("report_id") REFERENCES "reports"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "report_media_files" ADD CONSTRAINT "report_media_files_reportResultId_fkey" FOREIGN KEY ("reportResultId") REFERENCES "report_results"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "campaign_tasks" ADD CONSTRAINT "campaign_tasks_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -306,6 +347,15 @@ ALTER TABLE "campaign_task_assignments" ADD CONSTRAINT "campaign_task_assignment
 
 -- AddForeignKey
 ALTER TABLE "campaign_joining_requests" ADD CONSTRAINT "campaign_joining_requests_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "campaign_submissions" ADD CONSTRAINT "campaign_submissions_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "campaign_results" ADD CONSTRAINT "campaign_results_campaign_submission_id_fkey" FOREIGN KEY ("campaign_submission_id") REFERENCES "campaign_submissions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "campaign_result_files" ADD CONSTRAINT "campaign_result_files_campaign_result_id_fkey" FOREIGN KEY ("campaign_result_id") REFERENCES "campaign_results"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "report_issues" ADD CONSTRAINT "report_issues_report_id_fkey" FOREIGN KEY ("report_id") REFERENCES "reports"("id") ON DELETE SET NULL ON UPDATE CASCADE;

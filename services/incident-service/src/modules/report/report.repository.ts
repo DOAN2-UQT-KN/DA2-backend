@@ -35,20 +35,10 @@ export class ReportRepository {
             },
           },
         },
-        reportJoiningRequest: {
-          where: { deletedAt: null },
-        },
-        campaignTasks: {
-          where: { deletedAt: null },
-          include: {
-            campaignTaskAssignments: {
-              where: { deletedAt: null },
-            },
-          },
-        },
       },
     });
   }
+
 
   async update(
     id: string,

@@ -114,5 +114,77 @@ router.post(
     campaignController.getApprovedVolunteers,
 );
 
-export default router;
+import { campaignSubmissionController } from "./campaign_submission/campaign_submission.controller";
 
+// =====================
+// Submission Routes
+// =====================
+
+/**
+ * @route   POST /api/v1/campaigns/:id/submissions
+ * @desc    Create a submission (title, description in body); attach draft results from the DB
+ * @access  Private (Campaign manager only)
+ */
+router.post(
+  "/:id/submissions",
+  authenticate,
+  campaignSubmissionController.createSubmission,
+);
+
+/**
+ * @route   GET /api/v1/campaigns/:id/submissions
+ * @desc    Get all submissions for a campaign
+ * @access  Private
+ */
+router.get(
+  "/:id/submissions",
+  authenticate,
+  campaignSubmissionController.getSubmissions,
+);
+
+/**
+ * @route   GET /api/v1/campaigns/:id/submissions/current-results
+ * @desc    Draft results for this campaign (not yet submitted / no submission id)
+ * @access  Private
+ */
+router.get(
+  "/:id/submissions/current-results",
+  authenticate,
+  campaignSubmissionController.getCurrentResults,
+);
+
+/**
+ * @route   GET /api/v1/campaigns/submissions/:submissionId
+ * @desc    Get submission detail (with all results and files)
+ * @access  Private
+ */
+router.get(
+  "/submissions/:submissionId",
+  authenticate,
+  campaignSubmissionController.getSubmissionDetail,
+);
+
+/**
+ * @route   POST /api/v1/campaigns/submissions/:submissionId/results
+ * @desc    Add a result to an existing submission
+ * @access  Private (Submitter only)
+ */
+router.post(
+  "/submissions/:submissionId/results",
+  authenticate,
+  campaignSubmissionController.addResult,
+);
+
+/**
+ * @route   PUT /api/v1/campaigns/submissions/:submissionId/process
+ * @desc    Approve or reject a submission
+ * @access  Private (Campaign manager only)
+ * @body    { approved }
+ */
+router.put(
+  "/submissions/:submissionId/process",
+  authenticate,
+  campaignSubmissionController.processSubmission,
+);
+
+export default router;

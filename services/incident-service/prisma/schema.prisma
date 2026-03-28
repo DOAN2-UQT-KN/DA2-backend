@@ -12,10 +12,10 @@ datasource db {
 }
 
 model Report {
-  id          String  @id @default(uuid()) @db.Uuid
-  campaignId  String? @map("campaign_id") @db.Uuid
-  userId      String? @map("user_id") @db.Uuid
-  title       String? @db.VarChar(200)
+  id         String  @id @default(uuid()) @db.Uuid
+  campaignId String? @map("campaign_id") @db.Uuid
+  userId     String? @map("user_id") @db.Uuid
+  title      String? @db.VarChar(200)
   description String?
 
   wasteType     String? @map("waste_type") @db.VarChar(100)
@@ -41,7 +41,6 @@ model Report {
   reportIssues     ReportIssue[]
   aiAnalysisLogs   AiAnalysisLog[]
   campaign         Campaign?         @relation(fields: [campaignId], references: [id])
-  reportResults    ReportResult[]
 
   @@index([campaignId])
   @@index([userId])
@@ -67,6 +66,8 @@ model Campaign {
   campaignManagers        CampaignManager[]
   campaignJoiningRequests CampaignJoiningRequest[]
   campaignTasks           CampaignTask[]
+  campaignSubmissions     CampaignSubmission[]
+  campaignResults         CampaignResult[]
 
   @@index([status])
   @@index([createdBy])
@@ -91,30 +92,6 @@ model Media {
   @@map("media")
 }
 
-model ReportResult {
-  id                   String @id @default(uuid()) @db.Uuid
-  reportId             String @map("report_id") @db.Uuid
-  submittedByManagerId String @map("submitted_by_manager_id") @db.Uuid
-
-  description String?
-
-  status Int @default(6)
-
-  createdBy String? @map("created_by") @db.Uuid
-  updatedBy String? @map("updated_by") @db.Uuid
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  report           Report            @relation(fields: [reportId], references: [id])
-  reportMediaFiles ReportMediaFile[]
-
-  @@index([reportId])
-  @@index([submittedByManagerId])
-  @@map("report_results")
-}
-
 model ReportMediaFile {
   id       String  @id @default(uuid()) @db.Uuid
   reportId String? @map("report_id") @db.Uuid
@@ -135,9 +112,7 @@ model ReportMediaFile {
   deletedAt DateTime? @map("deleted_at")
 
   // Relations
-  report         Report?       @relation(fields: [reportId], references: [id])
-  reportResult   ReportResult? @relation(fields: [reportResultId], references: [id])
-  reportResultId String?       @db.Uuid
+  report Report? @relation(fields: [reportId], references: [id])
 
   @@index([reportId])
   @@index([mediaId])
@@ -214,6 +189,83 @@ model CampaignJoiningRequest {
   @@map("campaign_joining_requests")
 }
 
+// A submission is created by a campaign manager to document cleanup work.
+// One campaign can have multiple submissions over time.
+model CampaignSubmission {
+  id          String  @id @default(uuid()) @db.Uuid
+  campaignId  String  @map("campaign_id") @db.Uuid
+  submittedBy String  @map("submitted_by") @db.Uuid // manager who submitted
+
+  title       String? @db.VarChar(200)
+  description String?
+
+  status Int @default(12) // pending / approved / rejected
+
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  campaign        Campaign         @relation(fields: [campaignId], references: [id])
+  campaignResults CampaignResult[]
+
+  @@index([campaignId])
+  @@index([submittedBy])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("campaign_submissions")
+}
+
+// A result is cleanup evidence for a campaign. While draft (no submission yet), campaignSubmissionId is null.
+model CampaignResult {
+  id                   String  @id @default(uuid()) @db.Uuid
+  campaignId           String  @map("campaign_id") @db.Uuid
+  campaignSubmissionId String? @map("campaign_submission_id") @db.Uuid
+
+  title       String  @db.VarChar(200)
+  description String?
+
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  campaign             Campaign              @relation(fields: [campaignId], references: [id])
+  campaignSubmission   CampaignSubmission?   @relation(fields: [campaignSubmissionId], references: [id])
+  campaignResultFiles  CampaignResultFile[]
+
+  @@index([campaignId])
+  @@index([campaignSubmissionId])
+  @@index([deletedAt])
+  @@map("campaign_results")
+}
+
+// Media files attached to a campaign result.
+model CampaignResultFile {
+  id               String @id @default(uuid()) @db.Uuid
+  campaignResultId String @map("campaign_result_id") @db.Uuid
+  mediaId          String @map("media_id") @db.Uuid
+
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  campaignResult CampaignResult @relation(fields: [campaignResultId], references: [id])
+
+  @@index([campaignResultId])
+  @@index([mediaId])
+  @@map("campaign_result_files")
+}
+
 model ReportIssue {
   id         String  @id @default(uuid()) @db.Uuid
   reportId   String? @map("report_id") @db.Uuid
@@ -273,7 +325,7 @@ model AiAnalysisLog {
   processedAt DateTime @default(now()) @map("processed_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
-  Report      Report   @relation(fields: [reportId], references: [id])
+  report      Report   @relation(fields: [reportId], references: [id])
 
   @@index([reportId])
   @@index([reportMediaFileId])

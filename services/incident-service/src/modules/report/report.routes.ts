@@ -172,48 +172,7 @@ router.get(
  */
 router.put("/tasks/status", authenticate, reportController.updateTaskStatus);
 
-// =====================
-// Result Routes
-// =====================
-
-/**
- * @route   POST /api/v1/reports/results
- * @desc    Submit a result for a report
- * @access  Private (Manager only)
- * @body    { reportId, description?, mediaFiles? }
- */
-router.post("/results", authenticate, reportController.submitResult);
-
-/**
- * @route   POST /api/v1/reports/results/get
- * @desc    Get all results for a report
- * @access  Private
- * @body    { reportId }
- */
-router.post("/results/get", authenticate, reportController.getReportResults);
-
-/**
- * @route   POST /api/v1/reports/results/detail
- * @desc    Get result detail by ID
- * @access  Private
- * @body    { resultId }
- */
-router.post("/results/detail", authenticate, reportController.getResultDetail);
-
-/**
- * @route   PUT /api/v1/reports/results/update
- * @desc    Update a result
- * @access  Private (Submitting Manager only)
- * @body    { resultId, description? }
- */
-router.put("/results/update", authenticate, reportController.updateResult);
-
-/**
- * @route   PUT /api/v1/reports/results/process
- * @desc    Approve or reject a result
- * @access  Private (Reporter only)
- * @body    { resultId, approved }
- */
-router.put("/results/process", authenticate, reportController.processResult);
+// Results have moved to campaign level — see /api/v1/campaigns/:id/submissions
 
 export default router;
+

@@ -10,7 +10,6 @@ import {
 } from "./report.dto";
 import { reportMediaRepository } from "./report_media.repository";
 import { campaignManagerRepository } from "../campaign/campaign_manager/campaign_manager.repository";
-import { reportVolunteerRepository } from "./report_volunteer/report_volunteer.repository";
 import {
   ReportStatus,
   MediaFileStage,
@@ -20,7 +19,7 @@ import prisma from "../../config/prisma.client";
 import { reportAnalysisQueueService } from "./queue/report-analysis-queue.service";
 
 export class ReportService {
-  constructor() { }
+  constructor() {}
 
   async createReport(
     userId: string,
@@ -114,27 +113,10 @@ export class ReportService {
         createdAt: mf.createdAt,
       })),
       managers: (report.campaign?.campaignManagers ?? []).map((m) => ({
-        reportId: report.id,
+        campaignId: report.campaignId ?? "",
         userId: m.userId,
         assignedBy: m.assignedBy,
         assignedAt: m.assignedAt,
-      })),
-      joiningRequests: report.reportJoiningRequest.map((jr) => ({
-        id: jr.id,
-        reportId: jr.reportId,
-        volunteerId: jr.volunteerId,
-        status: jr.status,
-        createdAt: jr.createdAt,
-      })),
-      tasks: report.campaignTasks.map((t) => ({
-        id: t.id,
-        reportId: t.reportId,
-        title: t.title,
-        description: t.description,
-        status: t.status,
-        scheduledTime: t.scheduledTime,
-        createdBy: t.createdBy,
-        createdAt: t.createdAt,
       })),
     };
   }
@@ -160,8 +142,8 @@ export class ReportService {
       request.imageUrls !== undefined && request.imageUrls !== null;
     const nextImageUrls = hasImageUrlsUpdate
       ? (request.imageUrls ?? [])
-        .map((imageUrl) => imageUrl.trim())
-        .filter((imageUrl) => imageUrl.length > 0)
+          .map((imageUrl) => imageUrl.trim())
+          .filter((imageUrl) => imageUrl.length > 0)
       : [];
     const imageUrlsChanged =
       hasImageUrlsUpdate &&
@@ -246,12 +228,6 @@ export class ReportService {
 
     if (existing.status === ReportStatus._STATUS_COMPLETED) {
       return toReportResponse(existing);
-    }
-
-    const approvedVolunteerCount =
-      await reportVolunteerRepository.countApprovedVolunteers(id);
-    if (approvedVolunteerCount < 1) {
-      throw new Error("Cannot mark report as done without approved volunteers");
     }
 
     const report = await reportRepository.markReportAsDone(id);
@@ -367,7 +343,7 @@ export class ReportService {
   }
 
   /**
-   * Check if user can manage a report (is reporter or manager)
+   * Check if user can manage a report (is reporter or campaign manager)
    */
   async canManageReport(reportId: string, userId: string): Promise<boolean> {
     const report = await reportRepository.findById(reportId);

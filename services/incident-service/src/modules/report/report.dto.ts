@@ -1,5 +1,3 @@
-import { ReportStatus, TaskStatus } from "../../constants/status.enum";
-
 // Request DTOs
 export interface CreateReportRequest {
   title: string;
@@ -18,13 +16,13 @@ export interface UpdateReportRequest {
   severityLevel?: number;
   latitude?: number;
   longitude?: number;
-  status?: ReportStatus;
+  status?: number;
   imageUrls?: string[] | null;
 }
 
 export interface ReportSearchQuery {
   search?: string; // Search in title/description
-  status?: ReportStatus; // Filter by status
+  status?: number; // Filter by status
   wasteType?: string; // Filter by waste type
   severityLevel?: number; // Filter by severity
   latitude?: number; // User's latitude for distance sorting
@@ -56,8 +54,6 @@ export interface ReportResponse {
 export interface ReportDetailResponse extends ReportResponse {
   mediaFiles: ReportMediaFileResponse[];
   managers: ReportManagerResponse[];
-  joiningRequests?: JoinRequestResponse[];
-  tasks?: TaskResponse[];
 }
 
 export interface ReportMediaFileResponse {
@@ -70,29 +66,10 @@ export interface ReportMediaFileResponse {
 }
 
 export interface ReportManagerResponse {
-  reportId: string;
+  campaignId: string;
   userId: string;
   assignedBy: string | null;
   assignedAt: Date;
-}
-
-export interface JoinRequestResponse {
-  id: string;
-  reportId: string | null;
-  volunteerId: string | null;
-  status: number;
-  createdAt: Date;
-}
-
-export interface TaskResponse {
-  id: string;
-  reportId: string | null;
-  title: string | null;
-  description: string | null;
-  status: number;
-  scheduledTime: Date | null;
-  createdBy: string | null;
-  createdAt: Date;
 }
 
 // Pagination response
@@ -102,44 +79,4 @@ export interface PaginatedReportsResponse {
   page: number;
   limit: number;
   totalPages: number;
-}
-
-// Manager Request DTOs
-export interface AddManagersRequest {
-  userIds: string[]; // Array of user IDs to add as managers
-}
-
-export interface RemoveManagerRequest {
-  userId: string; // User ID to remove as manager
-}
-
-// Task Request DTOs
-export interface CreateTaskRequest {
-  reportId: string;
-  title: string;
-  description?: string;
-  scheduledTime?: string; // ISO date string
-}
-
-export interface UpdateTaskRequest {
-  title?: string;
-  description?: string;
-  status?: TaskStatus;
-  scheduledTime?: string;
-}
-
-export interface AssignTaskRequest {
-  volunteerId: string;
-}
-
-// Task Response DTOs
-export interface TaskDetailResponse extends TaskResponse {
-  assignments: TaskAssignmentResponse[];
-}
-
-export interface TaskAssignmentResponse {
-  id: string;
-  campaignTaskId: string | null;
-  volunteerId: string | null;
-  createdAt: Date;
 }
