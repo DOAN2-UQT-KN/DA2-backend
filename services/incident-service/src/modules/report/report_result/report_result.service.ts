@@ -56,7 +56,7 @@ export interface ResultMediaFileResponse {
 }
 
 export class ReportResultService {
-  constructor() {}
+  constructor() { }
 
   /**
    * Submit a result for a report
@@ -145,11 +145,11 @@ export class ReportResultService {
       })),
       report: result.report
         ? {
-            id: result.report.id,
-            title: result.report.title,
-            status: result.report.status,
-            userId: result.report.userId,
-          }
+          id: result.report.id,
+          title: result.report.title,
+          status: result.report.status,
+          userId: result.report.userId,
+        }
         : undefined,
     };
   }

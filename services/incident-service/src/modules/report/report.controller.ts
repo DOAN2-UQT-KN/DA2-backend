@@ -13,7 +13,7 @@ import { ReportSearchQuery } from "./report.dto";
 
 
 export class ReportController {
-  constructor() {}
+  constructor() { }
 
   /**
    * Create a new report

@@ -20,7 +20,7 @@ import prisma from "../../config/prisma.client";
 import { reportAnalysisQueueService } from "./queue/report-analysis-queue.service";
 
 export class ReportService {
-  constructor() {}
+  constructor() { }
 
   async createReport(
     userId: string,
@@ -160,8 +160,8 @@ export class ReportService {
       request.imageUrls !== undefined && request.imageUrls !== null;
     const nextImageUrls = hasImageUrlsUpdate
       ? (request.imageUrls ?? [])
-          .map((imageUrl) => imageUrl.trim())
-          .filter((imageUrl) => imageUrl.length > 0)
+        .map((imageUrl) => imageUrl.trim())
+        .filter((imageUrl) => imageUrl.length > 0)
       : [];
     const imageUrlsChanged =
       hasImageUrlsUpdate &&
