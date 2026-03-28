@@ -10,7 +10,6 @@ export class ReportMediaRepository {
 
   async create(data: {
     reportId?: string;
-    reportResultId?: string;
     mediaId: string;
     stage?: string;
     uploadedBy?: string;
@@ -18,7 +17,6 @@ export class ReportMediaRepository {
     return this.prisma.reportMediaFile.create({
       data: {
         reportId: data.reportId,
-        reportResultId: data.reportResultId,
         mediaId: data.mediaId,
         stage: data.stage,
         uploadedBy: data.uploadedBy,
@@ -29,7 +27,6 @@ export class ReportMediaRepository {
   async createMany(
     data: {
       reportId?: string;
-      reportResultId?: string;
       mediaId: string;
       stage?: string;
       uploadedBy?: string;
@@ -40,7 +37,6 @@ export class ReportMediaRepository {
     return db.reportMediaFile.createMany({
       data: data.map((item) => ({
         reportId: item.reportId,
-        reportResultId: item.reportResultId,
         mediaId: item.mediaId,
         stage: item.stage,
         uploadedBy: item.uploadedBy,
@@ -51,13 +47,6 @@ export class ReportMediaRepository {
   async findByReportId(reportId: string) {
     return this.prisma.reportMediaFile.findMany({
       where: { reportId, deletedAt: null },
-      orderBy: { createdAt: "asc" },
-    });
-  }
-
-  async findByReportResultId(reportResultId: string) {
-    return this.prisma.reportMediaFile.findMany({
-      where: { reportResultId, deletedAt: null },
       orderBy: { createdAt: "asc" },
     });
   }

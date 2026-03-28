@@ -19,8 +19,7 @@ const ERROR_BACKOFF_MS = 2_000;
 
 export class BackgroundJobOrchestratorWorker {
   private readonly workerId = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
-  private readonly handlersByT
-  ype: Map<string, BackgroundJobMessageHandler>;
+  private readonly handlersByType: Map<string, BackgroundJobMessageHandler>;
   private isRunning = false;
   private isShuttingDown = false;
 
