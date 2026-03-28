@@ -25,10 +25,14 @@ FROM node:22-alpine
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-WORKDIR /app
+# Same layout as builder so node_modules/@da2/express-swagger -> ../../../shared/... resolves
+WORKDIR /app/api-gateway
 
 COPY --from=builder --chown=nodejs:nodejs /app/api-gateway/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/api-gateway/package*.json ./
+
+# file:../shared/express-swagger is a symlink; include the link target
+COPY --from=builder --chown=nodejs:nodejs /app/shared/express-swagger /app/shared/express-swagger
 
 COPY --from=builder --chown=nodejs:nodejs /app/api-gateway/dist ./dist
 

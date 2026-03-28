@@ -32,10 +32,15 @@ RUN apk add --no-cache openssl
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-WORKDIR /app
+# Same layout as builder so node_modules/@da2/express-swagger symlink resolves
+WORKDIR /app/services/identity-service
 
 COPY --from=builder --chown=nodejs:nodejs /app/services/identity-service/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/services/identity-service/package*.json ./
+
+# file:../../shared/express-swagger is a symlink; include the link target
+COPY --from=builder --chown=nodejs:nodejs /app/shared/express-swagger /app/shared/express-swagger
+
 COPY --from=builder --chown=nodejs:nodejs /app/services/identity-service/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/services/identity-service/prisma ./prisma
 
