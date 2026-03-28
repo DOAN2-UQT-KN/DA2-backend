@@ -64,7 +64,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: ./api-gateway
+          # Dockerfile COPY paths are relative to backend repo root (api-gateway/, shared/…)
+          context: .
           file: ./api-gateway/Dockerfile
           push: true
           tags: |

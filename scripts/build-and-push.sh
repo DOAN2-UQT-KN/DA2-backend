@@ -25,7 +25,7 @@ fi
 
 # Build and push identity-service
 echo "🔨 Building identity-service..."
-cd "$PROJECT_ROOT/be"
+cd "$PROJECT_ROOT"
 docker build -f services/identity-service/Dockerfile -t $DOCKER_USERNAME/identity-service:$TAG .
 docker tag $DOCKER_USERNAME/identity-service:$TAG $DOCKER_USERNAME/identity-service:latest
 echo "📤 Pushing identity-service..."
@@ -35,10 +35,10 @@ echo "✅ identity-service pushed successfully"
 echo ""
 
 # Build and push api-gateway (if exists)
-if [ -f "$PROJECT_ROOT/be/services/api-gateway/Dockerfile" ]; then
+if [ -f "$PROJECT_ROOT/api-gateway/Dockerfile" ]; then
     echo "🔨 Building api-gateway..."
-    cd "$PROJECT_ROOT/be"
-    docker build -f services/api-gateway/Dockerfile -t $DOCKER_USERNAME/api-gateway:$TAG .
+    cd "$PROJECT_ROOT"
+    docker build -f api-gateway/Dockerfile -t $DOCKER_USERNAME/api-gateway:$TAG .
     docker tag $DOCKER_USERNAME/api-gateway:$TAG $DOCKER_USERNAME/api-gateway:latest
     echo "📤 Pushing api-gateway..."
     docker push $DOCKER_USERNAME/api-gateway:$TAG
@@ -52,7 +52,7 @@ echo ""
 echo "📋 Pushed images:"
 echo "   - $DOCKER_USERNAME/identity-service:$TAG"
 echo "   - $DOCKER_USERNAME/identity-service:latest"
-if [ -f "$PROJECT_ROOT/be/services/api-gateway/Dockerfile" ]; then
+if [ -f "$PROJECT_ROOT/api-gateway/Dockerfile" ]; then
     echo "   - $DOCKER_USERNAME/api-gateway:$TAG"
     echo "   - $DOCKER_USERNAME/api-gateway:latest"
 fi

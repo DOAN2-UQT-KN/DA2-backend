@@ -65,7 +65,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: ./services/identity-service
+          # Dockerfile COPY paths are relative to backend repo root (services/…, shared/…)
+          context: .
           file: ./services/identity-service/Dockerfile
           push: true
           build-args: |
