@@ -22,10 +22,6 @@ export interface AddReportImagesRequest {
   imageUrls: string[];
 }
 
-export interface AddManagersRequest {
-  userIds: string[];
-}
-
 export interface ReportSearchQuery {
   search?: string; // Search in title/description
   status?: number; // Filter by status
@@ -68,13 +64,6 @@ export interface ReportMediaFileResponse {
   stage: string | null;
   uploadedBy: string | null;
   createdAt: Date;
-}
-
-export interface ReportManagerResponse {
-  campaignId: string;
-  userId: string;
-  assignedBy: string | null;
-  assignedAt: Date;
 }
 
 // Pagination response

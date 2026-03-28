@@ -26,3 +26,14 @@ export interface CampaignResponse {
   reportIds: string[];
   managerIds: string[];
 }
+
+export interface AddCampaignManagersRequest {
+  userIds: string[];
+}
+
+export interface CampaignManagerAssignmentResponse {
+  campaignId: string;
+  userId: string;
+  assignedBy: string | null;
+  assignedAt: Date;
+}

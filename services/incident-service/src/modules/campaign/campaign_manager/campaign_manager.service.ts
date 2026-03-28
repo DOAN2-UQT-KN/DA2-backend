@@ -1,9 +1,9 @@
 import { campaignManagerRepository } from "./campaign_manager.repository";
 import { reportRepository } from "../../report/report.repository";
 import {
-  ReportManagerResponse,
-  AddManagersRequest,
-} from "../../report/report.dto";
+  AddCampaignManagersRequest,
+  CampaignManagerAssignmentResponse,
+} from "../campaign.dto";
 import { campaignRepository } from "../campaign.repository";
 import { HttpError, HTTP_STATUS } from "../../../constants/http-status";
 
@@ -11,42 +11,56 @@ export class CampaignManagerService {
   constructor() {}
 
   /**
-   * Add multiple managers to the campaign that owns the report.
-   * Reporter and campaign managers can add managers.
+   * Campaign creator or a campaign manager may manage the campaign (tasks,
+   * manager roster, assignments, etc.).
    */
-  async addManagers(
-    reportId: string,
-    request: AddManagersRequest,
-    assignedBy: string,
-  ): Promise<ReportManagerResponse[]> {
-    const report = await reportRepository.findById(reportId);
-    if (!report) {
-      throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
+  async canManageCampaign(
+    campaignId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const campaign = await campaignRepository.findById(campaignId);
+    if (!campaign) {
+      return false;
     }
 
-    if (!report.campaignId) {
+    if (campaign.createdBy === userId) {
+      return true;
+    }
+
+    return campaignManagerRepository.isManager(campaignId, userId);
+  }
+
+  /**
+   * Add multiple managers to a campaign.
+   * Only the campaign creator or existing campaign managers may add managers.
+   */
+  async addManagers(
+    campaignId: string,
+    request: AddCampaignManagersRequest,
+    assignedBy: string,
+  ): Promise<CampaignManagerAssignmentResponse[]> {
+    const campaign = await campaignRepository.findById(campaignId);
+    if (!campaign) {
       throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Report is not linked to any campaign",
-        ),
+        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
       );
     }
 
-    const canManage = await this.canManageReport(reportId, assignedBy);
+    const canManage = await this.canManageCampaign(campaignId, assignedBy);
     if (!canManage) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
-          "Only the reporter or campaign managers can assign managers",
+          "Only the campaign creator or campaign managers can assign managers",
         ),
       );
     }
 
-    const addedManagers: ReportManagerResponse[] = [];
+    const addedManagers: CampaignManagerAssignmentResponse[] = [];
 
     for (const userId of request.userIds) {
       const existing =
         await campaignManagerRepository.findByCampaignIdAndUserId(
-          report.campaignId,
+          campaignId,
           userId,
         );
       if (existing) {
@@ -54,13 +68,13 @@ export class CampaignManagerService {
       }
 
       const manager = await campaignManagerRepository.assignManager({
-        campaignId: report.campaignId,
+        campaignId,
         userId,
         assignedBy,
       });
 
       addedManagers.push({
-        campaignId: report.campaignId,
+        campaignId,
         userId: manager.userId,
         assignedBy: manager.assignedBy,
         assignedAt: manager.assignedAt,
@@ -71,33 +85,32 @@ export class CampaignManagerService {
   }
 
   /**
-   * Remove a manager from the campaign that owns the report.
-   * Only the reporter can remove managers for that report's campaign context.
+   * Remove a manager from a campaign.
+   * Only the campaign creator or a campaign manager may remove managers.
    */
   async removeManager(
-    reportId: string,
+    campaignId: string,
     userId: string,
     removedBy: string,
   ): Promise<void> {
-    const report = await reportRepository.findById(reportId);
-    if (!report) {
-      throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
+    const campaign = await campaignRepository.findById(campaignId);
+    if (!campaign) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
+      );
     }
 
-    if (!report.campaignId) {
+    const canRemove = await this.canManageCampaign(campaignId, removedBy);
+    if (!canRemove) {
       throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Report is not linked to any campaign",
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Only the campaign creator or campaign managers can remove managers",
         ),
       );
     }
 
-    if (report.userId !== removedBy) {
-      throw new HttpError(HTTP_STATUS.NOT_A_REPORTER);
-    }
-
     const existing = await campaignManagerRepository.findByCampaignIdAndUserId(
-      report.campaignId,
+      campaignId,
       userId,
     );
     if (!existing) {
@@ -105,7 +118,7 @@ export class CampaignManagerService {
     }
 
     await campaignManagerRepository.removeManager(
-      report.campaignId,
+      campaignId,
       userId,
       removedBy,
     );
@@ -128,15 +141,43 @@ export class CampaignManagerService {
    */
   async canManageReport(reportId: string, userId: string): Promise<boolean> {
     const report = await reportRepository.findById(reportId);
-    if (!report) return false;
+    if (!report) {
+      return false;
+    }
 
-    if (report.userId === userId) return true;
+    if (report.userId === userId) {
+      return true;
+    }
 
     if (!report.campaignId) {
       return false;
     }
 
     return campaignManagerRepository.isManager(report.campaignId, userId);
+  }
+
+  /**
+   * List manager assignments for a campaign.
+   */
+  async listManagers(
+    campaignId: string,
+  ): Promise<CampaignManagerAssignmentResponse[]> {
+    const campaign = await campaignRepository.findById(campaignId);
+    if (!campaign) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
+      );
+    }
+
+    const managers =
+      await campaignManagerRepository.findManagersByCampaignId(campaignId);
+
+    return managers.map((m) => ({
+      campaignId,
+      userId: m.userId,
+      assignedBy: m.assignedBy,
+      assignedAt: m.assignedAt,
+    }));
   }
 
   /**
@@ -160,17 +201,6 @@ export class CampaignManagerService {
           }
         : undefined,
     }));
-  }
-
-  async getCampaignManagers(campaignId: string): Promise<string[]> {
-    const campaign = await campaignRepository.findById(campaignId);
-    if (!campaign) {
-      throw new Error("Campaign not found");
-    }
-
-    const managers =
-      await campaignManagerRepository.findManagersByCampaignId(campaignId);
-    return managers.map((manager) => manager.userId);
   }
 }
 

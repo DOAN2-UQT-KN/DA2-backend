@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
 import { campaignController } from "./campaign.controller";
+import { campaignSubmissionController } from "./campaign_submission/campaign_submission.controller";
 
 const router = Router();
 
@@ -17,6 +18,74 @@ router.post("/", authenticate, campaignController.createCampaign);
  * @access  Private
  */
 router.get("/", authenticate, campaignController.getCampaigns);
+
+/**
+ * @route   GET /api/v1/campaigns/tasks/my-assigned
+ * @desc    Tasks assigned to the current user (volunteer)
+ * @access  Private
+ */
+router.get(
+  "/tasks/my-assigned",
+  authenticate,
+  campaignController.getMyAssignedTasks,
+);
+
+/**
+ * @route   GET /api/v1/campaigns/tasks/:taskId
+ * @desc    Task detail with assignments
+ * @access  Private
+ */
+router.get("/tasks/:taskId", authenticate, campaignController.getTaskById);
+
+/**
+ * @route   PUT /api/v1/campaigns/tasks/:taskId
+ * @desc    Update a task
+ * @access  Private
+ */
+router.put("/tasks/:taskId", authenticate, campaignController.updateTask);
+
+/**
+ * @route   DELETE /api/v1/campaigns/tasks/:taskId
+ * @desc    Soft-delete a task
+ * @access  Private
+ */
+router.delete("/tasks/:taskId", authenticate, campaignController.deleteTask);
+
+/**
+ * @route   POST /api/v1/campaigns/tasks/:taskId/assign
+ * @desc    Assign a volunteer to a task
+ * @access  Private
+ * @body    { volunteerId }
+ */
+router.post(
+  "/tasks/:taskId/assign",
+  authenticate,
+  campaignController.assignTask,
+);
+
+/**
+ * @route   POST /api/v1/campaigns/tasks/:taskId/unassign
+ * @desc    Unassign a volunteer from a task
+ * @access  Private
+ * @body    { volunteerId }
+ */
+router.post(
+  "/tasks/:taskId/unassign",
+  authenticate,
+  campaignController.unassignTask,
+);
+
+/**
+ * @route   PUT /api/v1/campaigns/tasks/:taskId/status
+ * @desc    Update task status (assigned volunteer)
+ * @access  Private
+ * @body    { status }
+ */
+router.put(
+  "/tasks/:taskId/status",
+  authenticate,
+  campaignController.updateTaskStatus,
+);
 
 /**
  * @route   GET /api/v1/campaigns/:id
@@ -38,6 +107,47 @@ router.put("/:id", authenticate, campaignController.updateCampaign);
  * @access  Private (Campaign manager only)
  */
 router.delete("/:id", authenticate, campaignController.deleteCampaign);
+
+// =====================
+// Campaign managers & tasks (scoped by campaign id)
+// =====================
+
+/**
+ * @route   POST /api/v1/campaigns/:id/add-managers
+ * @access  Private
+ * @body    { userIds: string[] }
+ */
+router.post("/:id/add-managers", authenticate, campaignController.addManagers);
+
+/**
+ * @route   POST /api/v1/campaigns/:id/remove-manager
+ * @access  Private
+ * @body    { userId }
+ */
+router.post(
+  "/:id/remove-manager",
+  authenticate,
+  campaignController.removeManager,
+);
+
+/**
+ * @route   GET /api/v1/campaigns/:id/managers
+ * @access  Private
+ */
+router.get("/:id/managers", authenticate, campaignController.getCampaignManagers);
+
+/**
+ * @route   POST /api/v1/campaigns/:id/tasks
+ * @access  Private
+ * @body    { title, description?, scheduledTime? }
+ */
+router.post("/:id/tasks", authenticate, campaignController.createTask);
+
+/**
+ * @route   GET /api/v1/campaigns/:id/tasks
+ * @access  Private
+ */
+router.get("/:id/tasks", authenticate, campaignController.getCampaignTasks);
 
 // =====================
 // Joining Request Routes
@@ -113,8 +223,6 @@ router.post(
     authenticate,
     campaignController.getApprovedVolunteers,
 );
-
-import { campaignSubmissionController } from "./campaign_submission/campaign_submission.controller";
 
 // =====================
 // Submission Routes

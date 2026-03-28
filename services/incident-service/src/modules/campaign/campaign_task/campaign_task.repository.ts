@@ -29,9 +29,9 @@ export class CampaignTaskRepository {
     });
   }
 
-  async findByReportId(reportId: string) {
+  async findByCampaignId(campaignId: string) {
     return this.prisma.campaignTask.findMany({
-      where: { reportId, deletedAt: null },
+      where: { campaignId, deletedAt: null },
       include: {
         campaignTaskAssignments: {
           where: { deletedAt: null },
@@ -90,7 +90,7 @@ export class CampaignTaskRepository {
       include: {
         campaignTask: {
           include: {
-            report: {
+            campaign: {
               select: {
                 id: true,
                 title: true,

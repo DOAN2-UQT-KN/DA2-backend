@@ -1,28 +1,27 @@
 import { campaignTaskRepository } from "./campaign_task.repository";
-import { reportRepository } from "../../report/report.repository";
+import { campaignRepository } from "../campaign.repository";
 import { campaignManagerService } from "../campaign_manager/campaign_manager.service";
-import { reportVolunteerService } from "../../report/report_volunteer/report_volunteer.service";
-import { TaskStatus } from "../../../constants/status.enum";
+import { campaignJoiningRequestService } from "../campaign_joining_request/campaign_joining_request.service";
+import { GlobalStatus, TaskStatus } from "../../../constants/status.enum";
 import { HttpError, HTTP_STATUS } from "../../../constants/http-status";
 
-// Task DTOs (copied from task module)
 export interface CreateTaskRequest {
-  reportId: string;
+  campaignId: string;
   title: string;
   description?: string;
-  scheduledTime?: string; // ISO date string
+  scheduledTime?: string;
 }
 
 export interface UpdateTaskRequest {
   title?: string;
   description?: string;
-  status?: TaskStatus;
+  status?: number;
   scheduledTime?: string;
 }
 
 export interface TaskResponse {
   id: string;
-  reportId: string | null;
+  campaignId: string | null;
   title: string | null;
   description: string | null;
   status: number;
@@ -46,35 +45,31 @@ export interface CampaignTaskAssignmentResponse {
 export class CampaignTaskService {
   constructor() {}
 
-  /**
-   * Create a task for a report
-   * Only reporter or managers can create tasks
-   */
   async createTask(
     userId: string,
     request: CreateTaskRequest,
   ): Promise<TaskResponse> {
-    // Check if report exists
-    const report = await reportRepository.findById(request.reportId);
-    if (!report) {
-      throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
+    const campaign = await campaignRepository.findById(request.campaignId);
+    if (!campaign) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
+      );
     }
 
-    // Check if user can manage the report
-    const canManage = await campaignManagerService.canManageReport(
-      request.reportId,
+    const canManage = await campaignManagerService.canManageCampaign(
+      request.campaignId,
       userId,
     );
     if (!canManage) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
-          "Only reporter or managers can create tasks",
+          "Only the campaign creator or campaign managers can create tasks",
         ),
       );
     }
 
     const task = await campaignTaskRepository.create({
-      report: { connect: { id: request.reportId } },
+      campaign: { connect: { id: request.campaignId } },
       title: request.title,
       description: request.description,
       scheduledTime: request.scheduledTime
@@ -87,20 +82,16 @@ export class CampaignTaskService {
     return this.toTaskResponse(task);
   }
 
-  /**
-   * Get task by ID
-   */
   async getTaskById(id: string): Promise<TaskResponse | null> {
     const task = await campaignTaskRepository.findById(id);
     return task ? this.toTaskResponse(task) : null;
   }
 
-  /**
-   * Get task with assignments
-   */
   async getTaskDetail(id: string): Promise<TaskDetailResponse | null> {
     const task = await campaignTaskRepository.findByIdWithAssignments(id);
-    if (!task) return null;
+    if (!task) {
+      return null;
+    }
 
     return {
       ...this.toTaskResponse(task),
@@ -113,11 +104,18 @@ export class CampaignTaskService {
     };
   }
 
-  /**
-   * Get all tasks for a report
-   */
-  async getReportTasks(reportId: string): Promise<TaskDetailResponse[]> {
-    const tasks = await campaignTaskRepository.findByReportId(reportId);
+  async getCampaignTasks(
+    campaignId: string,
+  ): Promise<TaskDetailResponse[]> {
+    const campaign = await campaignRepository.findById(campaignId);
+    if (!campaign) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
+      );
+    }
+
+    const tasks =
+      await campaignTaskRepository.findByCampaignId(campaignId);
     return tasks.map((task) => ({
       ...this.toTaskResponse(task),
       assignments: task.campaignTaskAssignments.map((a) => ({
@@ -129,10 +127,6 @@ export class CampaignTaskService {
     }));
   }
 
-  /**
-   * Update a task
-   * Only reporter or managers can update tasks
-   */
   async updateTask(
     taskId: string,
     userId: string,
@@ -143,21 +137,20 @@ export class CampaignTaskService {
       throw new HttpError(HTTP_STATUS.TASK_NOT_FOUND);
     }
 
-    if (!task.reportId) {
+    if (!task.campaignId) {
       throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated report"),
+        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated campaign"),
       );
     }
 
-    // Check if user can manage the report
-    const canManage = await campaignManagerService.canManageReport(
-      task.reportId,
+    const canManage = await campaignManagerService.canManageCampaign(
+      task.campaignId,
       userId,
     );
     if (!canManage) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
-          "Only reporter or managers can update tasks",
+          "Only the campaign creator or campaign managers can update tasks",
         ),
       );
     }
@@ -174,31 +167,26 @@ export class CampaignTaskService {
     return this.toTaskResponse(updated);
   }
 
-  /**
-   * Delete a task
-   * Only reporter or managers can delete tasks
-   */
   async deleteTask(taskId: string, userId: string): Promise<void> {
     const task = await campaignTaskRepository.findById(taskId);
     if (!task) {
       throw new HttpError(HTTP_STATUS.TASK_NOT_FOUND);
     }
 
-    if (!task.reportId) {
+    if (!task.campaignId) {
       throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated report"),
+        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated campaign"),
       );
     }
 
-    // Check if user can manage the report
-    const canManage = await campaignManagerService.canManageReport(
-      task.reportId,
+    const canManage = await campaignManagerService.canManageCampaign(
+      task.campaignId,
       userId,
     );
     if (!canManage) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
-          "Only reporter or managers can delete tasks",
+          "Only the campaign creator or campaign managers can delete tasks",
         ),
       );
     }
@@ -206,11 +194,6 @@ export class CampaignTaskService {
     await campaignTaskRepository.softDelete(taskId);
   }
 
-  /**
-   * Assign a task to a volunteer
-   * Only reporter or managers can assign tasks
-   * Volunteer must be approved for the report
-   */
   async assignTask(
     taskId: string,
     volunteerId: string,
@@ -221,39 +204,37 @@ export class CampaignTaskService {
       throw new HttpError(HTTP_STATUS.TASK_NOT_FOUND);
     }
 
-    if (!task.reportId) {
+    if (!task.campaignId) {
       throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated report"),
+        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated campaign"),
       );
     }
 
-    // Check if user can manage the report
-    const canManage = await campaignManagerService.canManageReport(
-      task.reportId,
+    const canManage = await campaignManagerService.canManageCampaign(
+      task.campaignId,
       assignedBy,
     );
     if (!canManage) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
-          "Only reporter or managers can assign tasks",
+          "Only the campaign creator or campaign managers can assign tasks",
         ),
       );
     }
 
-    // Check if volunteer is approved for the report
-    const isApproved = await reportVolunteerService.isApprovedVolunteer(
-      task.reportId,
-      volunteerId,
-    );
+    const isApproved =
+      await campaignJoiningRequestService.isApprovedVolunteer(
+        task.campaignId,
+        volunteerId,
+      );
     if (!isApproved) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
-          "Volunteer must be approved for this report before being assigned tasks",
+          "Volunteer must be approved for this campaign before being assigned tasks",
         ),
       );
     }
 
-    // Check if already assigned
     const existing = await campaignTaskRepository.findAssignment(
       taskId,
       volunteerId,
@@ -271,15 +252,11 @@ export class CampaignTaskService {
       volunteerId,
     });
 
-    // Update task status to in_progress if it was open
     if (task.status === TaskStatus._STATUS_TODO) {
       await campaignTaskRepository.update(taskId, {
         status: TaskStatus._STATUS_INPROCESS,
       });
     }
-
-    // TODO: Send notification to volunteer about task assignment
-    // await notificationService.notifyVolunteerAboutTaskAssignment(volunteerId, taskId);
 
     return {
       id: assignment.id,
@@ -289,9 +266,6 @@ export class CampaignTaskService {
     };
   }
 
-  /**
-   * Remove volunteer from task
-   */
   async unassignTask(
     taskId: string,
     volunteerId: string,
@@ -302,21 +276,20 @@ export class CampaignTaskService {
       throw new HttpError(HTTP_STATUS.TASK_NOT_FOUND);
     }
 
-    if (!task.reportId) {
+    if (!task.campaignId) {
       throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated report"),
+        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated campaign"),
       );
     }
 
-    // Check if user can manage the report
-    const canManage = await campaignManagerService.canManageReport(
-      task.reportId,
+    const canManage = await campaignManagerService.canManageCampaign(
+      task.campaignId,
       removedBy,
     );
     if (!canManage) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
-          "Only reporter or managers can unassign tasks",
+          "Only the campaign creator or campaign managers can unassign tasks",
         ),
       );
     }
@@ -336,9 +309,6 @@ export class CampaignTaskService {
     await campaignTaskRepository.removeAssignment(assignment.id);
   }
 
-  /**
-   * Get tasks assigned to a volunteer
-   */
   async getMyAssignedTasks(volunteerId: string) {
     const assignments =
       await campaignTaskRepository.findAssignmentsByVolunteerId(volunteerId);
@@ -352,33 +322,29 @@ export class CampaignTaskService {
       task: a.campaignTask
         ? {
             id: a.campaignTask.id,
-            reportId: a.campaignTask.reportId,
+            campaignId: a.campaignTask.campaignId,
             title: a.campaignTask.title,
             description: a.campaignTask.description,
             status: a.campaignTask.status,
             scheduledTime: a.campaignTask.scheduledTime,
             createdBy: a.campaignTask.createdBy,
             createdAt: a.campaignTask.createdAt,
-            report: a.campaignTask.report,
+            campaign: a.campaignTask.campaign,
           }
         : null,
     }));
   }
 
-  /**
-   * Update task status (by assigned volunteer)
-   */
   async updateTaskStatusByVolunteer(
     taskId: string,
     volunteerId: string,
-    status: TaskStatus._STATUS_INPROCESS | TaskStatus._STATUS_COMPLETED,
+    status: GlobalStatus._STATUS_INPROCESS | GlobalStatus._STATUS_COMPLETED,
   ): Promise<TaskResponse> {
     const task = await campaignTaskRepository.findById(taskId);
     if (!task) {
       throw new HttpError(HTTP_STATUS.TASK_NOT_FOUND);
     }
 
-    // Check if volunteer is assigned to this task
     const assignment = await campaignTaskRepository.findAssignment(
       taskId,
       volunteerId,
@@ -393,10 +359,20 @@ export class CampaignTaskService {
     return this.toTaskResponse(updated);
   }
 
-  private toTaskResponse(task: any): TaskResponse {
+  private toTaskResponse(task: {
+    id: string;
+    campaignId: string | null;
+    title: string | null;
+    description: string | null;
+    status: number;
+    scheduledTime: Date | null;
+    createdBy: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): TaskResponse {
     return {
       id: task.id,
-      reportId: task.reportId,
+      campaignId: task.campaignId,
       title: task.title,
       description: task.description,
       status: task.status,
@@ -408,5 +384,4 @@ export class CampaignTaskService {
   }
 }
 
-// Singleton instance
 export const campaignTaskService = new CampaignTaskService();
