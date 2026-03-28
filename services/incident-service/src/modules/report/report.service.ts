@@ -16,6 +16,7 @@ import {
   MediaResourceType,
 } from "../../constants/status.enum";
 import prisma from "../../config/prisma.client";
+import { randomUUID } from "node:crypto";
 import { reportAnalysisQueueService } from "./queue/report-analysis-queue.service";
 
 export class ReportService {
@@ -44,35 +45,36 @@ export class ReportService {
         },
       });
 
-      const createdReportMediaFiles: { id: string }[] = [];
-      for (const imageUrl of imageUrls) {
-        const media = await tx.media.create({
-          data: {
-            url: imageUrl,
-            type: MediaResourceType.REPORT,
-            createdBy: userId,
-            updatedBy: userId,
-          },
-        });
+      let reportMediaFileIds: string[] = [];
+      if (imageUrls.length > 0) {
+        const mediaRows = imageUrls.map((imageUrl) => ({
+          id: randomUUID(),
+          url: imageUrl,
+          type: MediaResourceType.REPORT,
+          createdBy: userId,
+          updatedBy: userId,
+        }));
 
-        const reportMediaFile = await tx.reportMediaFile.create({
-          data: {
-            reportId: createdReport.id,
-            mediaId: media.id,
-            stage: MediaFileStage.BEFORE,
-            uploadedBy: userId,
-            createdBy: userId,
-            updatedBy: userId,
-          },
-          select: { id: true },
-        });
+        await tx.media.createMany({ data: mediaRows });
 
-        createdReportMediaFiles.push(reportMediaFile);
+        const reportMediaRows = mediaRows.map((m) => ({
+          id: randomUUID(),
+          reportId: createdReport.id,
+          mediaId: m.id,
+          stage: MediaFileStage.BEFORE,
+          uploadedBy: userId,
+          createdBy: userId,
+          updatedBy: userId,
+        }));
+
+        await tx.reportMediaFile.createMany({ data: reportMediaRows });
+
+        reportMediaFileIds = reportMediaRows.map((r) => r.id);
       }
 
       return {
         report: createdReport,
-        reportMediaFileIds: createdReportMediaFiles.map((item) => item.id),
+        reportMediaFileIds,
       };
     });
 
