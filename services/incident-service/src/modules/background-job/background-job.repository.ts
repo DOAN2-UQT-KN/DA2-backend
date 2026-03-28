@@ -7,6 +7,7 @@ import {
   SQSClient,
 } from "@aws-sdk/client-sqs";
 import prisma from "../../config/prisma.client";
+import { GlobalStatus } from "../../constants/status.enum";
 import {
   BackgroundJobEnvelope,
   BackgroundJobType,
@@ -49,7 +50,7 @@ export class BackgroundJobRepository {
       data: {
         jobType,
         payload: payload as object,
-        status: "queued",
+        status: GlobalStatus._STATUS_PENDING,
         attempts: 0,
       },
     });
@@ -76,7 +77,7 @@ export class BackgroundJobRepository {
       await prisma.backgroundJob.update({
         where: { id: job.id },
         data: {
-          status: "failed",
+          status: GlobalStatus._STATUS_FAILED,
           processedAt: new Date(),
         },
       });
@@ -143,19 +144,16 @@ export class BackgroundJobRepository {
     );
   }
 
-  async markProcessing(
-    jobId: string,
-    receiveCount: number,
-  ): Promise<boolean> {
+  async markProcessing(jobId: string, receiveCount: number): Promise<boolean> {
     const result = await prisma.backgroundJob.updateMany({
       where: {
         id: jobId,
         status: {
-          in: ["queued", "processing"],
+          in: [GlobalStatus._STATUS_PENDING, GlobalStatus._STATUS_INPROCESS],
         },
       },
       data: {
-        status: "processing",
+        status: GlobalStatus._STATUS_INPROCESS,
         attempts: receiveCount,
       },
     });
@@ -168,7 +166,7 @@ export class BackgroundJobRepository {
       where: {
         jobType: BackgroundJobType.ANALYZE_REPORT,
         status: {
-          in: ["queued", "processing"],
+          in: [GlobalStatus._STATUS_PENDING, GlobalStatus._STATUS_INPROCESS],
         },
         payload: {
           path: ["reportId"],
@@ -176,7 +174,7 @@ export class BackgroundJobRepository {
         },
       },
       data: {
-        status: "cancelled",
+        status: GlobalStatus._STATUS_CANCELED,
         processedAt: new Date(),
       },
     });
@@ -188,7 +186,7 @@ export class BackgroundJobRepository {
     await prisma.backgroundJob.update({
       where: { id: jobId },
       data: {
-        status: "succeeded",
+        status: GlobalStatus._STATUS_COMPLETED,
         processedAt: new Date(),
       },
     });
@@ -198,7 +196,7 @@ export class BackgroundJobRepository {
     await prisma.backgroundJob.update({
       where: { id: jobId },
       data: {
-        status: "failed",
+        status: GlobalStatus._STATUS_FAILED,
         processedAt: new Date(),
       },
     });
@@ -208,7 +206,7 @@ export class BackgroundJobRepository {
     await prisma.backgroundJob.update({
       where: { id: jobId },
       data: {
-        status: "queued",
+        status: GlobalStatus._STATUS_PENDING,
       },
     });
   }
@@ -220,7 +218,7 @@ export class BackgroundJobRepository {
     await prisma.backgroundJob.update({
       where: { id: jobId },
       data: {
-        status: "queued",
+        status: GlobalStatus._STATUS_PENDING,
       },
     });
   }

@@ -18,13 +18,13 @@ export interface UpdateReportRequest {
   severityLevel?: number;
   latitude?: number;
   longitude?: number;
-  status?: keyof typeof ReportStatus;
+  status?: ReportStatus;
   imageUrls?: string[] | null;
 }
 
 export interface ReportSearchQuery {
   search?: string; // Search in title/description
-  status?: keyof typeof ReportStatus; // Filter by status
+  status?: ReportStatus; // Filter by status
   wasteType?: string; // Filter by waste type
   severityLevel?: number; // Filter by severity
   latitude?: number; // User's latitude for distance sorting
@@ -46,7 +46,7 @@ export interface ReportResponse {
   severityLevel: number | null;
   latitude: number | null;
   longitude: number | null;
-  status: string | null;
+  status: number | null;
   aiVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -62,7 +62,8 @@ export interface ReportDetailResponse extends ReportResponse {
 
 export interface ReportMediaFileResponse {
   id: string;
-  fileUrl: string;
+  mediaId: string;
+  url: string | null;
   stage: string | null;
   uploadedBy: string | null;
   createdAt: Date;
@@ -79,7 +80,7 @@ export interface JoinRequestResponse {
   id: string;
   reportId: string | null;
   volunteerId: string | null;
-  status: string;
+  status: number;
   createdAt: Date;
 }
 
@@ -88,7 +89,7 @@ export interface TaskResponse {
   reportId: string | null;
   title: string | null;
   description: string | null;
-  status: string;
+  status: number;
   scheduledTime: Date | null;
   createdBy: string | null;
   createdAt: Date;
@@ -123,7 +124,7 @@ export interface CreateTaskRequest {
 export interface UpdateTaskRequest {
   title?: string;
   description?: string;
-  status?: keyof typeof TaskStatus;
+  status?: TaskStatus;
   scheduledTime?: string;
 }
 
@@ -138,7 +139,7 @@ export interface TaskDetailResponse extends TaskResponse {
 
 export interface TaskAssignmentResponse {
   id: string;
-  reportTaskId: string | null;
+  campaignTaskId: string | null;
   volunteerId: string | null;
   createdAt: Date;
 }

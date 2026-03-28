@@ -4,6 +4,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import reportRoutes from "./modules/report/report.routes";
+import campaignRoutes from "./modules/campaign/campaign.routes";
 import { errorHandler } from "./middleware/error.middleware";
 import {
   camelCaseRequestBody,
@@ -36,6 +37,7 @@ app.get("/health", (_req, res) => {
 
 // Routes
 app.use("/api/v1/reports", reportRoutes);
+app.use("/api/v1/campaigns", campaignRoutes);
 
 // Error handling
 app.use(errorHandler);

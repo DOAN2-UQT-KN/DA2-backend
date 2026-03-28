@@ -1,64 +1,124 @@
 import axios from "axios";
-import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
-import { ReportStatus } from "../../constants/status.enum";
-import { reportRepository } from "./report.repository";
+import { MediaResourceType, ReportStatus } from "../../constants/status.enum";
 
-interface AiAnalyzeResponse {
-  success?: boolean;
-  data?: {
-    detectedWasteType?: string;
-    wasteType?: string;
-    confidence?: number;
-    boundingBox?: unknown;
-  };
+interface PredictResult {
+  source_url?: string;
+  detections?: number;
+  predicted_url?: string;
+}
+
+interface PredictApiResponse {
+  results?: PredictResult[];
 }
 
 export class ReportAiAnalysisService {
-  private readonly aiServiceUrl = process.env.AI_SERVICE_URL;
+  private readonly aiPredictUrl =
+    process.env.AI_PREDICT_URL || "http://68.183.189.178:8000/predict";
 
-  async analyzeReport(reportId: string, mediaFiles: string[]): Promise<void> {
-    if (!this.aiServiceUrl) {
-      throw new Error("AI_SERVICE_URL is not configured");
+  async analyzeReport(
+    reportId: string,
+    reportMediaFileIds: string[],
+  ): Promise<void> {
+    const reportMediaFiles = await prisma.reportMediaFile.findMany({
+      where: {
+        id: { in: reportMediaFileIds },
+        reportId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        mediaId: true,
+      },
+    });
+
+    if (reportMediaFiles.length === 0) {
+      throw new Error("No active report media files found for AI analysis");
     }
 
-    const response = await axios.post<AiAnalyzeResponse>(
-      `${this.aiServiceUrl}/api/v1/analyze`,
+    const mediaRecords = await prisma.media.findMany({
+      where: {
+        id: { in: reportMediaFiles.map((item) => item.mediaId) },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        url: true,
+      },
+    });
+
+    const mediaById = new Map(mediaRecords.map((item) => [item.id, item.url]));
+
+    const sourceToReportMediaFileIds = new Map<string, string[]>();
+    for (const reportMediaFile of reportMediaFiles) {
+      const sourceUrl = mediaById.get(reportMediaFile.mediaId);
+      if (!sourceUrl) {
+        continue;
+      }
+
+      const existing = sourceToReportMediaFileIds.get(sourceUrl) ?? [];
+      existing.push(reportMediaFile.id);
+      sourceToReportMediaFileIds.set(sourceUrl, existing);
+    }
+
+    const sourceUrls = [...sourceToReportMediaFileIds.keys()];
+    if (sourceUrls.length === 0) {
+      throw new Error("No source URLs found for AI analysis");
+    }
+
+    const response = await axios.post<PredictApiResponse>(
+      this.aiPredictUrl,
       {
-        reportId,
-        images: mediaFiles,
+        image_urls: sourceUrls,
       },
       {
-        timeout: 15_000,
+        timeout: 45_000,
       },
     );
 
-    const responseData = response.data?.data;
-    const detectedWasteType =
-      responseData?.detectedWasteType ?? responseData?.wasteType;
-    const confidence =
-      typeof responseData?.confidence === "number"
-        ? responseData.confidence
-        : null;
-
-    if (response.data?.success !== false) {
-      await reportRepository.update(reportId, {
-        wasteType: detectedWasteType,
-        status: ReportStatus.IN_PROGRESS,
-        aiVerified: true,
-      });
+    const results = response.data?.results ?? [];
+    if (results.length === 0) {
+      throw new Error("AI predict API returned no results");
     }
 
-    await prisma.aiAnalysisLog.create({
-      data: {
-        reportId,
-        detectedWasteType: detectedWasteType ?? null,
-        confidence,
-        boundingBox:
-          responseData?.boundingBox !== undefined
-            ? (responseData.boundingBox as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
-      },
+    await prisma.$transaction(async (tx) => {
+      for (const item of results) {
+        if (!item.source_url || !item.predicted_url) {
+          continue;
+        }
+
+        const queueForSource = sourceToReportMediaFileIds.get(item.source_url);
+        const reportMediaFileId = queueForSource?.shift();
+        if (!reportMediaFileId) {
+          continue;
+        }
+
+        const predictedMedia = await tx.media.create({
+          data: {
+            url: item.predicted_url,
+            type: MediaResourceType.AI_PREDICT,
+          },
+          select: { id: true },
+        });
+
+        await tx.aiAnalysisLog.create({
+          data: {
+            reportId,
+            reportMediaFileId,
+            mediaId: predictedMedia.id,
+            detections:
+              typeof item.detections === "number" ? item.detections : null,
+          },
+        });
+      }
+
+      await tx.report.update({
+        where: { id: reportId },
+        data: {
+          status: ReportStatus._STATUS_VERIFIED,
+          aiVerified: true,
+        },
+      });
     });
   }
 }

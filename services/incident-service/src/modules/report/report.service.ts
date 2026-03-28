@@ -9,9 +9,13 @@ import {
   PaginatedReportsResponse,
 } from "./report.dto";
 import { reportMediaRepository } from "./report_media.repository";
-import { reportManagerRepository } from "./report_manager/report_manager.repository";
+import { campaignManagerRepository } from "../campaign/campaign_manager/campaign_manager.repository";
 import { reportVolunteerRepository } from "./report_volunteer/report_volunteer.repository";
-import { ReportStatus, MediaFileStage } from "../../constants/status.enum";
+import {
+  ReportStatus,
+  MediaFileStage,
+  MediaResourceType,
+} from "../../constants/status.enum";
 import prisma from "../../config/prisma.client";
 import { reportAnalysisQueueService } from "./queue/report-analysis-queue.service";
 
@@ -26,7 +30,7 @@ export class ReportService {
       .map((imageUrl) => imageUrl.trim())
       .filter((imageUrl) => imageUrl.length > 0);
 
-    const report = await prisma.$transaction(async (tx) => {
+    const reportAndMedia = await prisma.$transaction(async (tx) => {
       const createdReport = await tx.report.create({
         data: {
           userId,
@@ -36,32 +40,54 @@ export class ReportService {
           severityLevel: request.severityLevel,
           latitude: request.latitude,
           longitude: request.longitude,
-          status: ReportStatus.PENDING,
+          status: ReportStatus._STATUS_PENDING,
           aiVerified: false,
         },
       });
 
-      await reportMediaRepository.createMany(
-        imageUrls.map((fileUrl) => ({
-          reportId: createdReport.id,
-          fileUrl,
-          stage: MediaFileStage.BEFORE,
-          uploadedBy: userId,
-        })),
-        tx,
-      );
+      const createdReportMediaFiles: { id: string }[] = [];
+      for (const imageUrl of imageUrls) {
+        const media = await tx.media.create({
+          data: {
+            url: imageUrl,
+            type: MediaResourceType.REPORT,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        });
 
-      return createdReport;
+        const reportMediaFile = await tx.reportMediaFile.create({
+          data: {
+            reportId: createdReport.id,
+            mediaId: media.id,
+            stage: MediaFileStage.BEFORE,
+            uploadedBy: userId,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+          select: { id: true },
+        });
+
+        createdReportMediaFiles.push(reportMediaFile);
+      }
+
+      return {
+        report: createdReport,
+        reportMediaFileIds: createdReportMediaFiles.map((item) => item.id),
+      };
     });
 
     // Publish async analysis job so report creation stays fast and resilient.
     reportAnalysisQueueService
-      .enqueueAnalysis(report.id, imageUrls)
+      .enqueueAnalysis(
+        reportAndMedia.report.id,
+        reportAndMedia.reportMediaFileIds,
+      )
       .catch((err) => {
         console.error("Failed to enqueue AI analysis job:", err.message);
       });
 
-    return toReportResponse(report);
+    return toReportResponse(reportAndMedia.report);
   }
 
   async getReportById(id: string): Promise<ReportResponse | null> {
@@ -73,17 +99,22 @@ export class ReportService {
     const report = await reportRepository.findByIdWithRelations(id);
     if (!report) return null;
 
+    const mediaUrlMap = await this.getMediaUrlMap(
+      report.reportMediaFiles.map((mf) => mf.mediaId),
+    );
+
     return {
       ...toReportResponse(report),
       mediaFiles: report.reportMediaFiles.map((mf) => ({
         id: mf.id,
-        fileUrl: mf.fileUrl,
+        mediaId: mf.mediaId,
+        url: mediaUrlMap.get(mf.mediaId) ?? null,
         stage: mf.stage,
         uploadedBy: mf.uploadedBy,
         createdAt: mf.createdAt,
       })),
-      managers: report.reportManagers.map((m) => ({
-        reportId: m.reportId,
+      managers: (report.campaign?.campaignManagers ?? []).map((m) => ({
+        reportId: report.id,
         userId: m.userId,
         assignedBy: m.assignedBy,
         assignedAt: m.assignedAt,
@@ -95,7 +126,7 @@ export class ReportService {
         status: jr.status,
         createdAt: jr.createdAt,
       })),
-      tasks: report.reportTasks.map((t) => ({
+      tasks: report.campaignTasks.map((t) => ({
         id: t.id,
         reportId: t.reportId,
         title: t.title,
@@ -118,8 +149,11 @@ export class ReportService {
     }
 
     const existingMediaFiles = await reportMediaRepository.findByReportId(id);
+    const existingMediaUrlMap = await this.getMediaUrlMap(
+      existingMediaFiles.map((media) => media.mediaId),
+    );
     const existingImageUrls = existingMediaFiles
-      .map((media) => media.fileUrl.trim())
+      .map((media) => existingMediaUrlMap.get(media.mediaId)?.trim() ?? "")
       .filter((url) => url.length > 0);
 
     const hasImageUrlsUpdate =
@@ -133,6 +167,8 @@ export class ReportService {
       hasImageUrlsUpdate &&
       nextImageUrls.length > 0 &&
       this.haveImageUrlsChanged(existingImageUrls, nextImageUrls);
+
+    let nextReportMediaFileIds: string[] = [];
 
     const report = await prisma.$transaction(async (tx) => {
       const updatedReport = await tx.report.update({
@@ -152,15 +188,34 @@ export class ReportService {
       if (hasImageUrlsUpdate) {
         if (nextImageUrls.length > 0) {
           await reportMediaRepository.softDeleteByReportId(id, tx);
-          await reportMediaRepository.createMany(
-            nextImageUrls.map((fileUrl) => ({
-              reportId: id,
-              fileUrl,
-              stage: MediaFileStage.BEFORE,
-              uploadedBy: existing.userId ?? undefined,
-            })),
-            tx,
-          );
+          const createdFiles: { id: string }[] = [];
+
+          for (const imageUrl of nextImageUrls) {
+            const media = await tx.media.create({
+              data: {
+                url: imageUrl,
+                type: MediaResourceType.REPORT,
+                createdBy: existing.userId ?? undefined,
+                updatedBy: existing.userId ?? undefined,
+              },
+            });
+
+            const reportMediaFile = await tx.reportMediaFile.create({
+              data: {
+                reportId: id,
+                mediaId: media.id,
+                stage: MediaFileStage.BEFORE,
+                uploadedBy: existing.userId ?? undefined,
+                createdBy: existing.userId ?? undefined,
+                updatedBy: existing.userId ?? undefined,
+              },
+              select: { id: true },
+            });
+
+            createdFiles.push(reportMediaFile);
+          }
+
+          nextReportMediaFileIds = createdFiles.map((file) => file.id);
         }
       }
 
@@ -170,11 +225,11 @@ export class ReportService {
     if (imageUrlsChanged) {
       await reportRepository.update(id, {
         aiVerified: false,
-        status: ReportStatus.PENDING,
+        status: ReportStatus._STATUS_PENDING,
       });
 
       reportAnalysisQueueService
-        .reenqueueAnalysis(id, nextImageUrls)
+        .reenqueueAnalysis(id, nextReportMediaFileIds)
         .catch((err) => {
           console.error("Failed to re-enqueue AI analysis job:", err.message);
         });
@@ -189,7 +244,7 @@ export class ReportService {
       throw new Error("Report not found");
     }
 
-    if (existing.status === ReportStatus.COMPLETED) {
+    if (existing.status === ReportStatus._STATUS_COMPLETED) {
       return toReportResponse(existing);
     }
 
@@ -215,6 +270,27 @@ export class ReportService {
     const sortedNext = [...nextUrls].sort();
 
     return sortedCurrent.some((url, index) => url !== sortedNext[index]);
+  }
+
+  private async getMediaUrlMap(
+    mediaIds: string[],
+  ): Promise<Map<string, string>> {
+    if (mediaIds.length === 0) {
+      return new Map();
+    }
+
+    const mediaRecords = await prisma.media.findMany({
+      where: {
+        id: { in: mediaIds },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        url: true,
+      },
+    });
+
+    return new Map(mediaRecords.map((item) => [item.id, item.url]));
   }
 
   async deleteReport(id: string): Promise<void> {
@@ -271,7 +347,7 @@ export class ReportService {
    */
   async updateReportStatus(
     id: string,
-    status: string,
+    status: number,
   ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(id);
     if (!existing) {
@@ -300,8 +376,12 @@ export class ReportService {
     // Reporter can always manage
     if (report.userId === userId) return true;
 
-    // Check if user is a manager
-    return reportManagerRepository.isManager(reportId, userId);
+    if (!report.campaignId) {
+      return false;
+    }
+
+    // Check if user is a campaign manager for the report's campaign
+    return campaignManagerRepository.isManager(report.campaignId, userId);
   }
 }
 

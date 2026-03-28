@@ -20,7 +20,7 @@ export class ReportResultRepository {
         reportId: data.reportId,
         submittedByManagerId: data.submittedByManagerId,
         description: data.description,
-        status: ResultStatus.PENDING_APPROVAL,
+        status: ResultStatus._STATUS_WAITING_APPROVED,
       },
     });
   }
@@ -68,14 +68,14 @@ export class ReportResultRepository {
     });
   }
 
-  async update(id: string, data: { description?: string; status?: string }) {
+  async update(id: string, data: { description?: string; status?: number }) {
     return this.prisma.reportResult.update({
       where: { id },
       data,
     });
   }
 
-  async updateStatus(id: string, status: string) {
+  async updateStatus(id: string, status: number) {
     return this.prisma.reportResult.update({
       where: { id },
       data: { status },
@@ -84,14 +84,14 @@ export class ReportResultRepository {
 
   async addMediaFile(data: {
     reportResultId: string;
-    fileUrl: string;
+    mediaId: string;
     stage: string;
     uploadedBy: string;
   }) {
     return this.prisma.reportMediaFile.create({
       data: {
         reportResultId: data.reportResultId,
-        fileUrl: data.fileUrl,
+        mediaId: data.mediaId,
         stage: data.stage,
         uploadedBy: data.uploadedBy,
       },

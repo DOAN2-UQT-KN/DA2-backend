@@ -1,68 +1,83 @@
 /**
- * Status enums for the incident service
- * Following DDD principles by centralizing domain status values
+ * Global numeric status set used by all incident-service tables.
  */
-
-export enum ReportStatus {
-  PENDING = "pending",
-  IN_PROGRESS = "in_progress",
-  COMPLETED = "completed",
-  CANCELLED = "cancelled",
-  REJECTED = "rejected",
+export enum GlobalStatus {
+  _STATUS_ACTIVE = 1,
+  _STATUS_INACTIVE = 2,
+  _STATUS_DELETED = 3,
+  _STATUS_DRAFT = 4,
+  _STATUS_NEW = 5,
+  _STATUS_WAITING_APPROVED = 6,
+  _STATUS_WAITING_CONFIRMED = 7,
+  _STATUS_REVIEWED = 8,
+  _STATUS_INREVIEW = 9,
+  _STATUS_ASSIGNED = 10,
+  _STATUS_CANCELED = 11,
+  _STATUS_PENDING = 12,
+  _STATUS_VERIFIED = 13,
+  _STATUS_APPROVED = 14,
+  _STATUS_RECEIVED = 15,
+  _STATUS_CONFIRMED = 16,
+  _STATUS_COMPLETED = 17,
+  _STATUS_REJECTED = 18,
+  _STATUS_RETURNED = 19,
+  _STATUS_OBSOLETE = 20,
+  _STATUS_TODO = 21,
+  _STATUS_INPROCESS = 22,
+  _STATUS_FAILED = 23,
+  _STATUS_CLOSED = 24,
+  _STATUS_REPROCESS = 25,
 }
 
-export enum TaskStatus {
-  OPEN = "open",
-  IN_PROGRESS = "in_progress",
-  COMPLETED = "completed",
-  CANCELLED = "cancelled",
-}
-
-export enum JoinRequestStatus {
-  PENDING = "pending",
-  APPROVED = "approved",
-  REJECTED = "rejected",
-}
-
-export enum ResultStatus {
-  PENDING_APPROVAL = "PENDING_APPROVAL",
-  APPROVED = "APPROVED",
-  REJECTED = "REJECTED",
-}
+export const ReportStatus = GlobalStatus;
+export const TaskStatus = GlobalStatus;
+export const JoinRequestStatus = GlobalStatus;
+export const ResultStatus = GlobalStatus;
 
 export enum MediaFileStage {
   BEFORE = "BEFORE",
   AFTER = "AFTER",
 }
 
+export enum MediaResourceType {
+  REPORT = "REPORT",
+  USER = "USER",
+  REPORT_RESULT = "REPORT_RESULT",
+  AI_PREDICT = "AI_PREDICT",
+  OTHER = "OTHER",
+}
+
 /**
  * Utility functions for status validation
  */
 export class StatusValidator {
-  static isValidReportStatus(status: string): boolean {
-    return Object.values(ReportStatus).includes(status as ReportStatus);
+  static isValidStatus(status: number): boolean {
+    return Object.values(GlobalStatus).includes(status as GlobalStatus);
   }
 
-  static isValidTaskStatus(status: string): boolean {
-    return Object.values(TaskStatus).includes(status as TaskStatus);
+  static isValidReportStatus(status: number): boolean {
+    return this.isValidStatus(status);
   }
 
-  static isValidJoinRequestStatus(status: string): boolean {
-    return Object.values(JoinRequestStatus).includes(
-      status as JoinRequestStatus,
-    );
+  static isValidTaskStatus(status: number): boolean {
+    return this.isValidStatus(status);
   }
 
-  static isValidResultStatus(status: string): boolean {
-    return Object.values(ResultStatus).includes(status as ResultStatus);
+  static isValidJoinRequestStatus(status: number): boolean {
+    return this.isValidStatus(status);
+  }
+
+  static isValidResultStatus(status: number): boolean {
+    return this.isValidStatus(status);
   }
 }
 
 /**
  * Type aliases for better type safety
  */
-export type ReportStatusType = `${ReportStatus}`;
-export type TaskStatusType = `${TaskStatus}`;
-export type JoinRequestStatusType = `${JoinRequestStatus}`;
-export type ResultStatusType = `${ResultStatus}`;
+export type GlobalStatusType = GlobalStatus;
+export type ReportStatusType = GlobalStatus;
+export type TaskStatusType = GlobalStatus;
+export type JoinRequestStatusType = GlobalStatus;
+export type ResultStatusType = GlobalStatus;
 export type MediaFileStageType = `${MediaFileStage}`;

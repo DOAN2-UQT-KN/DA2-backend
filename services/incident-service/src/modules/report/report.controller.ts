@@ -6,16 +6,11 @@ import {
   sendSuccess,
 } from "../../constants/http-status";
 import { reportService } from "./report.service";
-import { reportManagerService } from "./report_manager/report_manager.service";
-import { reportTaskService } from "./report_task/report_task.service";
-import { reportVolunteerService } from "./report_volunteer/report_volunteer.service";
+import { campaignManagerService } from "../campaign/campaign_manager/campaign_manager.service";
+import { campaignTaskService } from "../campaign/campaign_task/campaign_task.service";
 import { reportResultService } from "./report_result/report_result.service";
 import { ReportSearchQuery } from "./report.dto";
-import {
-  ReportStatus,
-  TaskStatus,
-  JoinRequestStatus,
-} from "../../constants/status.enum";
+
 
 export class ReportController {
   constructor() {}
@@ -132,10 +127,7 @@ export class ReportController {
       .optional()
       .isFloat({ min: -180, max: 180 })
       .withMessage("Invalid longitude"),
-    body("status")
-      .optional()
-      .isIn(Object.values(ReportStatus))
-      .withMessage("Invalid status"),
+    body("status").optional().isInt().withMessage("Invalid status"),
     body("imageUrls")
       .optional({ nullable: true })
       .isArray()
@@ -156,10 +148,12 @@ export class ReportController {
       }
 
       try {
-        const report = await reportService.updateReport(
-          req.params.id,
-          req.body,
-        );
+        const payload = { ...req.body };
+        if (payload.status !== undefined) {
+          payload.status = parseInt(payload.status as string);
+        }
+
+        const report = await reportService.updateReport(req.params.id, payload);
         sendSuccess(res, HTTP_STATUS.OK, { report });
       } catch (error) {
         console.error("Update report error:", error);
@@ -269,7 +263,7 @@ export class ReportController {
    */
   searchReports = [
     query("search").optional().trim(),
-    query("status").optional().isIn(Object.values(ReportStatus)),
+    query("status").optional().isInt(),
     query("wasteType").optional().trim(),
     query("severityLevel").optional().isInt({ min: 1, max: 5 }),
     query("latitude").optional().isFloat({ min: -90, max: 90 }),
@@ -291,7 +285,9 @@ export class ReportController {
       try {
         const searchQuery: ReportSearchQuery = {
           search: req.query.search as string,
-          status: req.query.status as keyof typeof ReportStatus,
+          status: req.query.status
+            ? parseInt(req.query.status as string)
+            : undefined,
           wasteType: req.query.wasteType as string,
           severityLevel: req.query.severityLevel
             ? parseInt(req.query.severityLevel as string)
@@ -350,7 +346,7 @@ export class ReportController {
           return sendError(res, HTTP_STATUS.UNAUTHORIZED);
         }
 
-        const managers = await reportManagerService.addManagers(
+        const managers = await campaignManagerService.addManagers(
           req.params.id,
           req.body,
           assignedBy,
@@ -391,7 +387,7 @@ export class ReportController {
           return sendError(res, HTTP_STATUS.UNAUTHORIZED);
         }
 
-        await reportManagerService.removeManager(
+        await campaignManagerService.removeManager(
           req.params.id,
           req.body.userId,
           removedBy,
@@ -426,7 +422,7 @@ export class ReportController {
    */
   getReportManagers = async (req: Request, res: Response): Promise<void> => {
     try {
-      const managers = await reportManagerService.getReportManagers(
+      const managers = await campaignManagerService.getReportManagers(
         req.params.id,
       );
       sendSuccess(res, HTTP_STATUS.OK, { managers });
@@ -464,7 +460,7 @@ export class ReportController {
       }
 
       try {
-        const task = await reportTaskService.createTask(
+        const task = await campaignTaskService.createTask(
           req.user!.userId,
           req.body,
         );
@@ -499,7 +495,7 @@ export class ReportController {
       }
 
       try {
-        const task = await reportTaskService.getTaskDetail(req.body.taskId);
+        const task = await campaignTaskService.getTaskDetail(req.body.taskId);
         if (!task) {
           return sendError(res, HTTP_STATUS.NOT_FOUND);
         }
@@ -526,7 +522,9 @@ export class ReportController {
       }
 
       try {
-        const tasks = await reportTaskService.getReportTasks(req.body.reportId);
+        const tasks = await campaignTaskService.getReportTasks(
+          req.body.reportId,
+        );
         sendSuccess(res, HTTP_STATUS.OK, { tasks });
       } catch (error) {
         console.error("Get report tasks error:", error);
@@ -542,7 +540,7 @@ export class ReportController {
     body("taskId").notEmpty().withMessage("Task ID is required").trim(),
     body("title").optional().trim(),
     body("description").optional().trim(),
-    body("status").optional().isIn(Object.values(TaskStatus)),
+    body("status").optional().isInt(),
     body("scheduledTime")
       .optional()
       .isISO8601()
@@ -558,7 +556,10 @@ export class ReportController {
 
       try {
         const { taskId, ...updateData } = req.body;
-        const task = await reportTaskService.updateTask(
+        if (updateData.status !== undefined) {
+          updateData.status = parseInt(updateData.status as string);
+        }
+        const task = await campaignTaskService.updateTask(
           taskId,
           req.user!.userId,
           updateData,
@@ -594,7 +595,7 @@ export class ReportController {
       }
 
       try {
-        await reportTaskService.deleteTask(req.body.taskId, req.user!.userId);
+        await campaignTaskService.deleteTask(req.body.taskId, req.user!.userId);
         sendSuccess(
           res,
           HTTP_STATUS.OK.withMessage("Task deleted successfully"),
@@ -633,7 +634,7 @@ export class ReportController {
       }
 
       try {
-        const assignment = await reportTaskService.assignTask(
+        const assignment = await campaignTaskService.assignTask(
           req.body.taskId,
           req.body.volunteerId,
           req.user!.userId,
@@ -684,7 +685,7 @@ export class ReportController {
       }
 
       try {
-        await reportTaskService.unassignTask(
+        await campaignTaskService.unassignTask(
           req.body.taskId,
           req.body.volunteerId,
           req.user!.userId,
@@ -721,7 +722,7 @@ export class ReportController {
    */
   getMyAssignedTasks = async (req: Request, res: Response): Promise<void> => {
     try {
-      const tasks = await reportTaskService.getMyAssignedTasks(
+      const tasks = await campaignTaskService.getMyAssignedTasks(
         req.user!.userId,
       );
       sendSuccess(res, HTTP_STATUS.OK, { tasks });
@@ -736,9 +737,7 @@ export class ReportController {
    */
   updateTaskStatus = [
     body("taskId").notEmpty().withMessage("Task ID is required").trim(),
-    body("status")
-      .isIn([TaskStatus.IN_PROGRESS, TaskStatus.COMPLETED])
-      .withMessage("Invalid status"),
+    body("status").isInt().withMessage("Invalid status"),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -749,10 +748,10 @@ export class ReportController {
       }
 
       try {
-        const task = await reportTaskService.updateTaskStatusByVolunteer(
+        const task = await campaignTaskService.updateTaskStatusByVolunteer(
           req.body.taskId,
           req.user!.userId,
-          req.body.status,
+          parseInt(req.body.status),
         );
         sendSuccess(res, HTTP_STATUS.OK, { task });
       } catch (error) {
@@ -770,216 +769,6 @@ export class ReportController {
             );
           }
         }
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-      }
-    },
-  ];
-
-  // =====================
-  // Volunteer Operations
-  // =====================
-
-  /**
-   * Create a join request for a report
-   */
-  createJoinRequest = [
-    body("reportId").notEmpty().withMessage("Report ID is required").trim(),
-
-    async (req: Request, res: Response): Promise<void> => {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
-          errors: errors.array(),
-        });
-      }
-
-      try {
-        const joinRequest = await reportVolunteerService.createJoinRequest(
-          req.body.reportId,
-          req.user!.userId,
-        );
-        sendSuccess(res, HTTP_STATUS.CREATED, { joinRequest });
-      } catch (error) {
-        console.error("Create join request error:", error);
-        if (error instanceof Error) {
-          if (error.message.includes("Report not found")) {
-            return sendError(res, HTTP_STATUS.NOT_FOUND);
-          }
-          if (error.message.includes("Cannot join your own report")) {
-            return sendError(
-              res,
-              HTTP_STATUS.FORBIDDEN.withMessage("Cannot join your own report"),
-            );
-          }
-          if (error.message.includes("already exists")) {
-            return sendError(
-              res,
-              HTTP_STATUS.CONFLICT.withMessage("Join request already exists"),
-            );
-          }
-        }
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-      }
-    },
-  ];
-
-  /**
-   * Get join requests for a report
-   */
-  getJoinRequests = [
-    body("reportId").notEmpty().withMessage("Report ID is required").trim(),
-
-    async (req: Request, res: Response): Promise<void> => {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
-          errors: errors.array(),
-        });
-      }
-
-      try {
-        const joinRequests =
-          await reportVolunteerService.getJoinRequestsByReportId(
-            req.body.reportId,
-          );
-        sendSuccess(res, HTTP_STATUS.OK, { joinRequests });
-      } catch (error) {
-        console.error("Get join requests error:", error);
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-      }
-    },
-  ];
-
-  /**
-   * Get my join requests
-   */
-  getMyJoinRequests = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const joinRequests = await reportVolunteerService.getMyJoinRequests(
-        req.user!.userId,
-      );
-      sendSuccess(res, HTTP_STATUS.OK, { joinRequests });
-    } catch (error) {
-      console.error("Get my join requests error:", error);
-      sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-    }
-  };
-
-  /**
-   * Approve or reject a join request
-   */
-  processJoinRequest = [
-    body("requestId").notEmpty().withMessage("Request ID is required").trim(),
-    body("approved").isBoolean().withMessage("Approved must be boolean"),
-
-    async (req: Request, res: Response): Promise<void> => {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
-          errors: errors.array(),
-        });
-      }
-
-      try {
-        const status = req.body.approved
-          ? JoinRequestStatus.APPROVED
-          : JoinRequestStatus.REJECTED;
-        const joinRequest = await reportVolunteerService.processJoinRequest(
-          req.body.requestId,
-          req.user!.userId,
-          status,
-        );
-        sendSuccess(res, HTTP_STATUS.OK, { joinRequest });
-      } catch (error) {
-        console.error("Process join request error:", error);
-        if (error instanceof Error) {
-          if (error.message.includes("not found")) {
-            return sendError(res, HTTP_STATUS.NOT_FOUND);
-          }
-          if (error.message.includes("Only the reporter")) {
-            return sendError(res, HTTP_STATUS.FORBIDDEN);
-          }
-          if (error.message.includes("already processed")) {
-            return sendError(
-              res,
-              HTTP_STATUS.CONFLICT.withMessage(
-                "Join request already processed",
-              ),
-            );
-          }
-        }
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-      }
-    },
-  ];
-
-  /**
-   * Cancel a join request
-   */
-  cancelJoinRequest = [
-    body("requestId").notEmpty().withMessage("Request ID is required").trim(),
-
-    async (req: Request, res: Response): Promise<void> => {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
-          errors: errors.array(),
-        });
-      }
-
-      try {
-        await reportVolunteerService.cancelJoinRequest(
-          req.body.requestId,
-          req.user!.userId,
-        );
-        sendSuccess(
-          res,
-          HTTP_STATUS.OK.withMessage("Join request cancelled successfully"),
-        );
-      } catch (error) {
-        console.error("Cancel join request error:", error);
-        if (error instanceof Error) {
-          if (error.message.includes("not found")) {
-            return sendError(res, HTTP_STATUS.NOT_FOUND);
-          }
-          if (error.message.includes("Cannot cancel")) {
-            return sendError(res, HTTP_STATUS.FORBIDDEN);
-          }
-          if (error.message.includes("only cancel pending")) {
-            return sendError(
-              res,
-              HTTP_STATUS.CONFLICT.withMessage(
-                "Can only cancel pending requests",
-              ),
-            );
-          }
-        }
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-      }
-    },
-  ];
-
-  /**
-   * Get approved volunteers for a report
-   */
-  getApprovedVolunteers = [
-    body("reportId").notEmpty().withMessage("Report ID is required").trim(),
-
-    async (req: Request, res: Response): Promise<void> => {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
-          errors: errors.array(),
-        });
-      }
-
-      try {
-        const volunteers = await reportVolunteerService.getApprovedVolunteers(
-          req.body.reportId,
-        );
-        sendSuccess(res, HTTP_STATUS.OK, { volunteers });
-      } catch (error) {
-        console.error("Get approved volunteers error:", error);
         sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
       }
     },

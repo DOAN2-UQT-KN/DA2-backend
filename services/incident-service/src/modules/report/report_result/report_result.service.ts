@@ -1,11 +1,13 @@
 import { reportResultRepository } from "./report_result.repository";
 import { reportRepository } from "../report.repository";
-import { reportManagerService } from "../report_manager/report_manager.service";
+import { campaignManagerService } from "../../campaign/campaign_manager/campaign_manager.service";
 import {
   ResultStatus,
   ReportStatus,
   MediaFileStage,
+  MediaResourceType,
 } from "../../../constants/status.enum";
+import prisma from "../../../config/prisma.client";
 
 // Request DTOs
 export interface CreateResultRequest {
@@ -29,7 +31,7 @@ export interface ResultResponse {
   reportId: string;
   submittedByManagerId: string;
   description: string | null;
-  status: string;
+  status: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,14 +41,15 @@ export interface ResultDetailResponse extends ResultResponse {
   report?: {
     id: string;
     title: string | null;
-    status: string | null;
+    status: number | null;
     userId: string | null;
   };
 }
 
 export interface ResultMediaFileResponse {
   id: string;
-  fileUrl: string;
+  mediaId: string;
+  url: string | null;
   stage: string | null;
   uploadedBy: string | null;
   createdAt: Date;
@@ -70,7 +73,7 @@ export class ReportResultService {
     }
 
     // Check if user is a manager for this report
-    const isManager = await reportManagerService.isManager(
+    const isManager = await campaignManagerService.isManager(
       request.reportId,
       managerId,
     );
@@ -87,9 +90,18 @@ export class ReportResultService {
     // Add media files if provided
     if (request.mediaFiles && request.mediaFiles.length > 0) {
       for (const fileUrl of request.mediaFiles) {
+        const media = await prisma.media.create({
+          data: {
+            url: fileUrl,
+            type: MediaResourceType.REPORT_RESULT,
+            createdBy: managerId,
+            updatedBy: managerId,
+          },
+        });
+
         await reportResultRepository.addMediaFile({
           reportResultId: result.id,
-          fileUrl,
+          mediaId: media.id,
           stage: MediaFileStage.AFTER,
           uploadedBy: managerId,
         });
@@ -117,11 +129,16 @@ export class ReportResultService {
     const result = await reportResultRepository.findByIdWithRelations(id);
     if (!result) return null;
 
+    const mediaUrlMap = await this.getMediaUrlMap(
+      result.reportMediaFiles.map((mf) => mf.mediaId),
+    );
+
     return {
       ...this.toResultResponse(result),
       mediaFiles: result.reportMediaFiles.map((mf) => ({
         id: mf.id,
-        fileUrl: mf.fileUrl,
+        mediaId: mf.mediaId,
+        url: mediaUrlMap.get(mf.mediaId) ?? null,
         stage: mf.stage,
         uploadedBy: mf.uploadedBy,
         createdAt: mf.createdAt,
@@ -142,11 +159,18 @@ export class ReportResultService {
    */
   async getReportResults(reportId: string): Promise<ResultDetailResponse[]> {
     const results = await reportResultRepository.findByReportId(reportId);
+
+    const mediaIds = results.flatMap((result) =>
+      result.reportMediaFiles.map((mediaFile) => mediaFile.mediaId),
+    );
+    const mediaUrlMap = await this.getMediaUrlMap(mediaIds);
+
     return results.map((result) => ({
       ...this.toResultResponse(result),
       mediaFiles: result.reportMediaFiles.map((mf) => ({
         id: mf.id,
-        fileUrl: mf.fileUrl,
+        mediaId: mf.mediaId,
+        url: mediaUrlMap.get(mf.mediaId) ?? null,
         stage: mf.stage,
         uploadedBy: mf.uploadedBy,
         createdAt: mf.createdAt,
@@ -174,7 +198,7 @@ export class ReportResultService {
     }
 
     // Can only update pending results
-    if (result.status !== ResultStatus.PENDING_APPROVAL) {
+    if (result.status !== ResultStatus._STATUS_WAITING_APPROVED) {
       throw new Error("Can only update pending results");
     }
 
@@ -205,11 +229,13 @@ export class ReportResultService {
     }
 
     // Check if already processed
-    if (result.status !== ResultStatus.PENDING_APPROVAL) {
+    if (result.status !== ResultStatus._STATUS_WAITING_APPROVED) {
       throw new Error("Result already processed");
     }
 
-    const newStatus = approved ? ResultStatus.APPROVED : ResultStatus.REJECTED;
+    const newStatus = approved
+      ? ResultStatus._STATUS_APPROVED
+      : ResultStatus._STATUS_REJECTED;
     const updated = await reportResultRepository.updateStatus(
       resultId,
       newStatus,
@@ -218,7 +244,7 @@ export class ReportResultService {
     if (approved) {
       // Update report status to completed
       await reportRepository.update(result.reportId, {
-        status: ReportStatus.COMPLETED,
+        status: ReportStatus._STATUS_COMPLETED,
       });
 
       // TODO: Call reward service to add green points
@@ -284,6 +310,27 @@ export class ReportResultService {
       createdAt: result.createdAt,
       updatedAt: result.updatedAt,
     };
+  }
+
+  private async getMediaUrlMap(
+    mediaIds: string[],
+  ): Promise<Map<string, string>> {
+    if (mediaIds.length === 0) {
+      return new Map();
+    }
+
+    const mediaRecords = await prisma.media.findMany({
+      where: {
+        id: { in: mediaIds },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        url: true,
+      },
+    });
+
+    return new Map(mediaRecords.map((item) => [item.id, item.url]));
   }
 }
 

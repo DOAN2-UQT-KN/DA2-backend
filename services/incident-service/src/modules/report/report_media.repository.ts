@@ -11,7 +11,7 @@ export class ReportMediaRepository {
   async create(data: {
     reportId?: string;
     reportResultId?: string;
-    fileUrl: string;
+    mediaId: string;
     stage?: string;
     uploadedBy?: string;
   }) {
@@ -19,7 +19,7 @@ export class ReportMediaRepository {
       data: {
         reportId: data.reportId,
         reportResultId: data.reportResultId,
-        fileUrl: data.fileUrl,
+        mediaId: data.mediaId,
         stage: data.stage,
         uploadedBy: data.uploadedBy,
       },
@@ -30,7 +30,7 @@ export class ReportMediaRepository {
     data: {
       reportId?: string;
       reportResultId?: string;
-      fileUrl: string;
+      mediaId: string;
       stage?: string;
       uploadedBy?: string;
     }[],
@@ -41,7 +41,7 @@ export class ReportMediaRepository {
       data: data.map((item) => ({
         reportId: item.reportId,
         reportResultId: item.reportResultId,
-        fileUrl: item.fileUrl,
+        mediaId: item.mediaId,
         stage: item.stage,
         uploadedBy: item.uploadedBy,
       })),
@@ -68,7 +68,7 @@ export class ReportMediaRepository {
     });
   }
 
-  async update(id: string, data: { fileUrl?: string; stage?: string }) {
+  async update(id: string, data: { mediaId?: string; stage?: string }) {
     return this.prisma.reportMediaFile.update({
       where: { id },
       data,

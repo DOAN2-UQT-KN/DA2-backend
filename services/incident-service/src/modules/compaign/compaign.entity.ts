@@ -1,0 +1,28 @@
+import { Campaign, CampaignManager, Report } from "@prisma/client";
+import { CampaignResponse } from "./campaign.dto";
+
+export type CampaignEntity = Campaign;
+
+export type CampaignWithReports = Campaign & {
+  reports: Pick<Report, "id">[];
+  campaignManagers: Pick<CampaignManager, "userId">[];
+};
+
+export const toCampaignResponse = (
+  entity: CampaignWithReports,
+): CampaignResponse => {
+  const managerIds = entity.campaignManagers.map((manager) => manager.userId);
+
+  return {
+    id: entity.id,
+    title: entity.title,
+    description: entity.description,
+    status: entity.status,
+    createdBy: entity.createdBy,
+    updatedBy: entity.updatedBy,
+    createdAt: entity.createdAt,
+    updatedAt: entity.updatedAt,
+    reportIds: entity.reports.map((report) => report.id),
+    managerIds,
+  };
+};

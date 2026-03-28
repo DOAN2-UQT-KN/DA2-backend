@@ -28,16 +28,20 @@ export class ReportRepository {
         reportMediaFiles: {
           where: { deletedAt: null },
         },
-        reportManagers: {
-          where: { deletedAt: null },
+        campaign: {
+          include: {
+            campaignManagers: {
+              where: { deletedAt: null },
+            },
+          },
         },
         reportJoiningRequest: {
           where: { deletedAt: null },
         },
-        reportTasks: {
+        campaignTasks: {
           where: { deletedAt: null },
           include: {
-            taskAssignments: {
+            campaignTaskAssignments: {
               where: { deletedAt: null },
             },
           },
@@ -81,7 +85,7 @@ export class ReportRepository {
     return this.prisma.report.update({
       where: { id },
       data: {
-        status: ReportStatus.COMPLETED,
+        status: ReportStatus._STATUS_COMPLETED,
       },
     });
   }

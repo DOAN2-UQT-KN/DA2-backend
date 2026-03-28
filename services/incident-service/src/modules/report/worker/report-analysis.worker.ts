@@ -96,7 +96,7 @@ export class ReportAnalysisWorker {
 
       await reportAiAnalysisService.analyzeReport(
         parsed.payload.reportId,
-        parsed.payload.mediaFiles,
+        parsed.payload.reportMediaFileIds,
       );
       await backgroundJobRepository.acknowledge(message.receiptHandle);
       await backgroundJobRepository.markSucceeded(parsed.jobId);
@@ -171,24 +171,24 @@ export class ReportAnalysisWorker {
     if (
       !payload ||
       typeof payload.reportId !== "string" ||
-      !Array.isArray(payload.mediaFiles)
+      !Array.isArray(payload.reportMediaFileIds)
     ) {
       throw new Error("Invalid report analysis payload");
     }
 
-    const mediaFiles = payload.mediaFiles.filter(
+    const reportMediaFileIds = payload.reportMediaFileIds.filter(
       (item): item is string => typeof item === "string" && item.length > 0,
     );
 
-    if (mediaFiles.length === 0) {
-      throw new Error("Report analysis payload has no media files");
+    if (reportMediaFileIds.length === 0) {
+      throw new Error("Report analysis payload has no report media file IDs");
     }
 
     return {
       jobId: parsedEnvelope.jobId,
       payload: {
         reportId: payload.reportId,
-        mediaFiles,
+        reportMediaFileIds,
       },
     };
   }

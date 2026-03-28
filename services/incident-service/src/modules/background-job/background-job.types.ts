@@ -4,7 +4,7 @@ export enum BackgroundJobType {
 
 export interface AnalyzeReportJobPayload {
   reportId: string;
-  mediaFiles: string[];
+  reportMediaFileIds: string[];
 }
 
 export interface BackgroundJobEnvelope<TPayload = unknown> {

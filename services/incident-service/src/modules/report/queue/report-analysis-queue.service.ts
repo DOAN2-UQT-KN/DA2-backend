@@ -5,10 +5,13 @@ import {
 } from "../../background-job/background-job.types";
 
 export class ReportAnalysisQueueService {
-  async enqueueAnalysis(reportId: string, mediaFiles: string[]): Promise<void> {
+  async enqueueAnalysis(
+    reportId: string,
+    reportMediaFileIds: string[],
+  ): Promise<void> {
     const payload: AnalyzeReportJobPayload = {
       reportId,
-      mediaFiles,
+      reportMediaFileIds,
     };
 
     await backgroundJobRepository.enqueue(
@@ -17,9 +20,12 @@ export class ReportAnalysisQueueService {
     );
   }
 
-  async reenqueueAnalysis(reportId: string, mediaFiles: string[]): Promise<void> {
+  async reenqueueAnalysis(
+    reportId: string,
+    reportMediaFileIds: string[],
+  ): Promise<void> {
     await backgroundJobRepository.cancelPendingAnalyzeJobs(reportId);
-    await this.enqueueAnalysis(reportId, mediaFiles);
+    await this.enqueueAnalysis(reportId, reportMediaFileIds);
   }
 }
 
