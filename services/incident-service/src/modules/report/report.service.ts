@@ -1,10 +1,14 @@
-import { reportRepository } from "./report.repository";
+import {
+  reportRepository,
+  ReportWithMediaFiles,
+} from "./report.repository";
 import { toReportResponse } from "./report.entity";
 import {
   CreateReportRequest,
   UpdateReportRequest,
   AddReportImagesRequest,
   ReportSearchQuery,
+  ReportSearchWithScope,
   ReportResponse,
   ReportDetailResponse,
   PaginatedReportsResponse,
@@ -151,16 +155,19 @@ export class ReportService {
     const report = await reportRepository.findByIdWithRelations(id);
     if (!report) return null;
 
-    const aiAnalysisUrlMap = await this.getAiAnalysisUrlMap(
-      report.reportMediaFiles.map((mf) => mf.id),
-    );
+    const [details] = await this.reportsWithMediaToDetails([
+      report as ReportWithMediaFiles,
+    ]);
+    return details;
+  }
 
-    const mediaUrlMap = await this.getMediaUrlMap(
-      report.reportMediaFiles.map((mf) => mf.mediaId),
-    );
-
+  private toReportDetailFromLoaded(
+    report: ReportWithMediaFiles & { distance?: number },
+    mediaUrlMap: Map<string, string>,
+    aiAnalysisUrlMap: Map<string, string>,
+  ): ReportDetailResponse {
     return {
-      ...toReportResponse(report),
+      ...toReportResponse(report, report.distance),
       mediaFiles: report.reportMediaFiles.map((mf) => ({
         id: mf.id,
         mediaId: mf.mediaId,
@@ -170,6 +177,28 @@ export class ReportService {
         createdAt: mf.createdAt,
       })),
     };
+  }
+
+  private async reportsWithMediaToDetails(
+    reports: (ReportWithMediaFiles & { distance?: number })[],
+  ): Promise<ReportDetailResponse[]> {
+    const mediaIds: string[] = [];
+    const reportMediaFileIds: string[] = [];
+    for (const r of reports) {
+      for (const mf of r.reportMediaFiles) {
+        mediaIds.push(mf.mediaId);
+        reportMediaFileIds.push(mf.id);
+      }
+    }
+
+    const [mediaUrlMap, aiAnalysisUrlMap] = await Promise.all([
+      this.getMediaUrlMap([...new Set(mediaIds)]),
+      this.getAiAnalysisUrlMap([...new Set(reportMediaFileIds)]),
+    ]);
+
+    return reports.map((r) =>
+      this.toReportDetailFromLoaded(r, mediaUrlMap, aiAnalysisUrlMap),
+    );
   }
 
   private async getAiAnalysisUrlMap(
@@ -432,13 +461,19 @@ export class ReportService {
     await reportRepository.softDelete(id);
   }
 
-  async getUserReports(userId: string): Promise<ReportResponse[]> {
-    const reports = await reportRepository.findByUserId(userId);
-    return reports.map((r) => toReportResponse(r));
+  /**
+   * Current user's reports: same filters, sort, and pagination as GET /reports/search.
+   */
+  async searchMyReports(
+    userId: string,
+    query: ReportSearchQuery,
+  ): Promise<PaginatedReportsResponse> {
+    const scoped: ReportSearchWithScope = { ...query, scopedUserId: userId };
+    return this.searchReports(scoped);
   }
 
   async searchReports(
-    query: ReportSearchQuery,
+    query: ReportSearchWithScope,
   ): Promise<PaginatedReportsResponse> {
     const page = query.page || 1;
     const limit = query.limit || 10;
@@ -451,8 +486,10 @@ export class ReportService {
         query,
       );
 
+      const details = await this.reportsWithMediaToDetails(reports);
+
       return {
-        reports: reports.map((r) => toReportResponse(r, r.distance)),
+        reports: details,
         total,
         page,
         limit,
@@ -462,9 +499,10 @@ export class ReportService {
 
     // Otherwise, use standard search
     const { reports, total } = await reportRepository.search(query);
+    const details = await this.reportsWithMediaToDetails(reports);
 
     return {
-      reports: reports.map((r) => toReportResponse(r)),
+      reports: details,
       total,
       page,
       limit,

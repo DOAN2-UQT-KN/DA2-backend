@@ -9,6 +9,49 @@ import {
 import { reportService } from "./report.service";
 import { ReportSearchQuery } from "./report.dto";
 
+function buildReportSearchQuery(req: Request): ReportSearchQuery {
+  return {
+    search: req.query.search as string,
+    status: req.query.status
+      ? parseInt(req.query.status as string, 10)
+      : undefined,
+    wasteType: req.query.wasteType as string,
+    severityLevel: req.query.severityLevel
+      ? parseInt(req.query.severityLevel as string, 10)
+      : undefined,
+    latitude: req.query.latitude
+      ? parseFloat(req.query.latitude as string)
+      : undefined,
+    longitude: req.query.longitude
+      ? parseFloat(req.query.longitude as string)
+      : undefined,
+    maxDistance: req.query.maxDistance
+      ? parseInt(req.query.maxDistance as string, 10)
+      : undefined,
+    sortBy: req.query.sortBy as
+      | "distance"
+      | "createdAt"
+      | "severityLevel",
+    sortOrder: req.query.sortOrder as "asc" | "desc",
+    page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+    limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 10,
+  };
+}
+
+const reportSearchQueryValidators = [
+  query("search").optional().trim(),
+  query("status").optional().isInt(),
+  query("wasteType").optional().trim(),
+  query("severityLevel").optional().isInt({ min: 1, max: 5 }),
+  query("latitude").optional().isFloat({ min: -90, max: 90 }),
+  query("longitude").optional().isFloat({ min: -180, max: 180 }),
+  query("maxDistance").optional().isInt({ min: 1 }),
+  query("sortBy").optional().isIn(["distance", "createdAt", "severityLevel"]),
+  query("sortOrder").optional().isIn(["asc", "desc"]),
+  query("page").optional().isInt({ min: 1 }),
+  query("limit").optional().isInt({ min: 1, max: 100 }),
+];
+
 export class ReportController {
   constructor() { }
 
@@ -388,38 +431,10 @@ export class ReportController {
   };
 
   /**
-   * Get current user's reports
+   * Get current user's reports (same query params and response shape as GET /search).
    */
-  getMyReports = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
-      }
-
-      const reports = await reportService.getUserReports(userId);
-      sendSuccess(res, HTTP_STATUS.OK, { reports });
-    } catch (error) {
-      console.error("Get my reports error:", error);
-      sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-    }
-  };
-
-  /**
-   * Search and discover reports
-   */
-  searchReports = [
-    query("search").optional().trim(),
-    query("status").optional().isInt(),
-    query("wasteType").optional().trim(),
-    query("severityLevel").optional().isInt({ min: 1, max: 5 }),
-    query("latitude").optional().isFloat({ min: -90, max: 90 }),
-    query("longitude").optional().isFloat({ min: -180, max: 180 }),
-    query("maxDistance").optional().isInt({ min: 1 }),
-    query("sortBy").optional().isIn(["distance", "createdAt", "severityLevel"]),
-    query("sortOrder").optional().isIn(["asc", "desc"]),
-    query("page").optional().isInt({ min: 1 }),
-    query("limit").optional().isInt({ min: 1, max: 100 }),
+  getMyReports = [
+    ...reportSearchQueryValidators,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -430,34 +445,41 @@ export class ReportController {
       }
 
       try {
-        const searchQuery: ReportSearchQuery = {
-          search: req.query.search as string,
-          status: req.query.status
-            ? parseInt(req.query.status as string)
-            : undefined,
-          wasteType: req.query.wasteType as string,
-          severityLevel: req.query.severityLevel
-            ? parseInt(req.query.severityLevel as string)
-            : undefined,
-          latitude: req.query.latitude
-            ? parseFloat(req.query.latitude as string)
-            : undefined,
-          longitude: req.query.longitude
-            ? parseFloat(req.query.longitude as string)
-            : undefined,
-          maxDistance: req.query.maxDistance
-            ? parseInt(req.query.maxDistance as string)
-            : undefined,
-          sortBy: req.query.sortBy as
-            | "distance"
-            | "createdAt"
-            | "severityLevel",
-          sortOrder: req.query.sortOrder as "asc" | "desc",
-          page: req.query.page ? parseInt(req.query.page as string) : 1,
-          limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
-        };
+        const userId = req.user?.userId;
+        if (!userId) {
+          return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+        }
 
-        const result = await reportService.searchReports(searchQuery);
+        const result = await reportService.searchMyReports(
+          userId,
+          buildReportSearchQuery(req),
+        );
+        sendSuccess(res, HTTP_STATUS.OK, result);
+      } catch (error) {
+        console.error("Get my reports error:", error);
+        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      }
+    },
+  ];
+
+  /**
+   * Search and discover reports
+   */
+  searchReports = [
+    ...reportSearchQueryValidators,
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      try {
+        const result = await reportService.searchReports(
+          buildReportSearchQuery(req),
+        );
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {
         console.error("Search reports error:", error);

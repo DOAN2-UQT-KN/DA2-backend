@@ -10,6 +10,7 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
     responseData: "PaginatedReportsResponse",
   },
   "GET /api/v1/reports/my": {
+    query: "ReportSearchQuery",
     responseData: "ReportsListEnvelopeData",
   },
   "GET /api/v1/reports/:id/background-jobs/status": {

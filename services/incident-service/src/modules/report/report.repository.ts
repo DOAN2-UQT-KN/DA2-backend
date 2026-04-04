@@ -1,8 +1,15 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
 import { ReportEntity } from "./report.entity";
-import { ReportSearchQuery } from "./report.dto";
+import { ReportSearchWithScope } from "./report.dto";
 import { ReportStatus } from "../../constants/status.enum";
+
+/** Report row including non-deleted media links (for list/search responses). */
+export type ReportWithMediaFiles = Prisma.ReportGetPayload<{
+  include: {
+    reportMediaFiles: { where: { deletedAt: null } };
+  };
+}>;
 
 export class ReportRepository {
   private prisma: PrismaClient;
@@ -64,13 +71,6 @@ export class ReportRepository {
     });
   }
 
-  async findByUserId(userId: string): Promise<ReportEntity[]> {
-    return this.prisma.report.findMany({
-      where: { userId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-    });
-  }
-
   async markReportAsDone(id: string): Promise<ReportEntity> {
     return this.prisma.report.update({
       where: { id },
@@ -81,8 +81,8 @@ export class ReportRepository {
   }
 
   async search(
-    query: ReportSearchQuery,
-  ): Promise<{ reports: ReportEntity[]; total: number }> {
+    query: ReportSearchWithScope,
+  ): Promise<{ reports: ReportWithMediaFiles[]; total: number }> {
     const page = query.page || 1;
     const limit = query.limit || 10;
     const skip = (page - 1) * limit;
@@ -90,6 +90,10 @@ export class ReportRepository {
     const where: Prisma.ReportWhereInput = {
       deletedAt: null,
     };
+
+    if (query.scopedUserId) {
+      where.userId = query.scopedUserId;
+    }
 
     // Search filter
     if (query.search) {
@@ -129,6 +133,11 @@ export class ReportRepository {
         orderBy,
         skip,
         take: limit,
+        include: {
+          reportMediaFiles: {
+            where: { deletedAt: null },
+          },
+        },
       }),
       this.prisma.report.count({ where }),
     ]);
@@ -143,9 +152,9 @@ export class ReportRepository {
   async searchWithDistance(
     userLat: number,
     userLng: number,
-    query: ReportSearchQuery,
+    query: ReportSearchWithScope,
   ): Promise<{
-    reports: (ReportEntity & { distance: number })[];
+    reports: (ReportWithMediaFiles & { distance: number })[];
     total: number;
   }> {
     const page = query.page || 1;
@@ -181,6 +190,12 @@ export class ReportRepository {
     if (query.severityLevel !== undefined) {
       conditions.push(`severity_level = $${paramIndex}`);
       params.push(query.severityLevel);
+      paramIndex++;
+    }
+
+    if (query.scopedUserId) {
+      conditions.push(`user_id = $${paramIndex}`);
+      params.push(query.scopedUserId);
       paramIndex++;
     }
 
@@ -249,9 +264,31 @@ export class ReportRepository {
       ...params,
     );
 
+    const total = Number(countResult[0].count);
+    if (reports.length === 0) {
+      return { reports: [], total };
+    }
+
+    const withMedia = await this.prisma.report.findMany({
+      where: { id: { in: reports.map((r) => r.id) } },
+      include: {
+        reportMediaFiles: {
+          where: { deletedAt: null },
+        },
+      },
+    });
+    const byId = new Map(withMedia.map((r) => [r.id, r]));
+    const reportsWithMedia = reports.map((r) => {
+      const full = byId.get(r.id);
+      if (!full) {
+        throw new Error(`Report ${r.id} missing after distance search`);
+      }
+      return { ...full, distance: r.distance };
+    });
+
     return {
-      reports,
-      total: Number(countResult[0].count),
+      reports: reportsWithMedia,
+      total,
     };
   }
 }

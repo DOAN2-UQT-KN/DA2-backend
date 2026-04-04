@@ -36,6 +36,11 @@ export interface ReportSearchQuery {
   limit?: number;
 }
 
+/** Server-only scope for repository search (GET /my); never take from client on /search. */
+export type ReportSearchWithScope = ReportSearchQuery & {
+  scopedUserId?: string;
+};
+
 // Response DTOs
 export interface ReportResponse {
   id: string;
@@ -68,7 +73,7 @@ export interface ReportMediaFileResponse {
 
 // Pagination response
 export interface PaginatedReportsResponse {
-  reports: ReportResponse[];
+  reports: ReportDetailResponse[];
   total: number;
   page: number;
   limit: number;
@@ -95,10 +100,8 @@ export interface ReportDetailEnvelopeData {
   report: ReportDetailResponse;
 }
 
-/** OpenAPI: `data` for GET /reports/my */
-export interface ReportsListEnvelopeData {
-  reports: ReportResponse[];
-}
+/** OpenAPI: `data` for GET /reports/my (same shape as search: paginated + media) */
+export type ReportsListEnvelopeData = PaginatedReportsResponse;
 
 /** OpenAPI: `data` for background job status */
 export interface BackgroundJobsEnvelopeData {
