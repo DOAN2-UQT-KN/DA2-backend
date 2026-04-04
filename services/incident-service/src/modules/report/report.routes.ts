@@ -20,7 +20,7 @@ router.get("/search", authenticate, reportController.searchReports);
 
 /**
  * @route   GET /api/v1/reports/my
- * @desc    Get current user's reports
+ * @desc    Current user's reports: same filters/sort as /search, plus page & limit (default page=1, limit=10). Response includes total, total_pages.
  * @access  Private
  */
 router.get("/my", authenticate, reportController.getMyReports);

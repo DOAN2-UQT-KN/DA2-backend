@@ -431,7 +431,8 @@ export class ReportController {
   };
 
   /**
-   * Get current user's reports (same query params and response shape as GET /search).
+   * Get current user's reports: same query params as GET /search, including pagination (`page`, `limit`).
+   * Response: `{ reports, total, page, limit, totalPages }` (wrapped in API envelope).
    */
   getMyReports = [
     ...reportSearchQueryValidators,
