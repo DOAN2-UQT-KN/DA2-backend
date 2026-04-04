@@ -10,6 +10,11 @@ export class UserService {
         return user ? toUserResponse(user) : null;
     }
 
+    async getUserEmailById(id: string): Promise<string | null> {
+        const row = await userRepository.findEmailById(id);
+        return row?.email ?? null;
+    }
+
     async getUserByEmail(email: string): Promise<UserResponse | null> {
         const user = await userRepository.findByEmail(email);
         return user ? toUserResponse(user) : null;

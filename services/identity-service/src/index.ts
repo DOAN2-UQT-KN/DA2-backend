@@ -14,6 +14,7 @@ import userRoutes from "./modules/user/user.routes";
 import roleRoutes from "./modules/role/role.routes";
 import { caseTransformMiddleware } from "./middleware/case-transform.middleware";
 import { errorHandler } from "./middleware/error.middleware";
+import internalRoutes from "./internal/internal.routes";
 
 dotenv.config();
 
@@ -60,6 +61,8 @@ app.use(caseTransformMiddleware);
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok", service: "identity-service" });
 });
+
+app.use("/internal/v1", internalRoutes);
 
 // Routes
 app.use("/api/v1/auth", authRoutes);

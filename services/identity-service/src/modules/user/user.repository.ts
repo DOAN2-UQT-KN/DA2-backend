@@ -32,6 +32,13 @@ export class UserRepository {
     });
   }
 
+  async findEmailById(id: string): Promise<{ email: string } | null> {
+    return this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: { email: true },
+    });
+  }
+
   async findByEmail(email: string): Promise<UserEntity | null> {
     return this.prisma.user.findFirst({
       where: { email, deletedAt: null },

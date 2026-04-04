@@ -6,10 +6,14 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app/services/identity-service
 
+COPY shared/da2-constants /app/shared/da2-constants
+RUN cd /app/shared/da2-constants && npm ci && npm run build && npm cache clean --force
+
+COPY shared/express-swagger /app/shared/express-swagger
+
 COPY services/identity-service/package*.json ./
 COPY services/identity-service/tsconfig.json ./
 COPY services/identity-service/prisma ./prisma
-COPY shared/express-swagger /app/shared/express-swagger
 
 RUN npm ci && npm cache clean --force
 
@@ -38,7 +42,8 @@ WORKDIR /app/services/identity-service
 COPY --from=builder --chown=nodejs:nodejs /app/services/identity-service/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/services/identity-service/package*.json ./
 
-# file:../../shared/express-swagger is a symlink; include the link target
+# file: deps — include link targets
+COPY --from=builder --chown=nodejs:nodejs /app/shared/da2-constants /app/shared/da2-constants
 COPY --from=builder --chown=nodejs:nodejs /app/shared/express-swagger /app/shared/express-swagger
 
 COPY --from=builder --chown=nodejs:nodejs /app/services/identity-service/dist ./dist

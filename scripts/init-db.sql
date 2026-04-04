@@ -2,6 +2,9 @@
 SELECT 'CREATE DATABASE identitydb'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'identitydb')\gexec
 
+SELECT 'CREATE DATABASE notificationdb'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'notificationdb')\gexec
+
 -- Add more databases here as needed:
 -- SELECT 'CREATE DATABASE productdb'
 -- WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'productdb')\gexec

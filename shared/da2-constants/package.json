@@ -1,0 +1,14 @@
+{
+  "name": "@da2/constants",
+  "version": "1.0.0",
+  "description": "Shared HTTP response helpers and global numeric status enums for DA2 services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.37",
+    "typescript": "^5.3.3"
+  }
+}

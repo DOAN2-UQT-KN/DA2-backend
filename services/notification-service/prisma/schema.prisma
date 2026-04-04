@@ -1,0 +1,61 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Delivery channel: email vs in-app (website).
+enum NotificationType {
+  EMAIL
+  WEBSITE
+}
+
+/// Semantic notification category; each maps to templates per channel.
+enum NotificationKind {
+  CAMPAIGN_DONE
+  REPORT_STATUS
+  REPORT_READY
+  TASK_ASSIGNED
+  VOLUNTEER_REQUEST
+  VOLUNTEER_APPROVED
+  RESET_PASSWORD
+  GENERIC
+}
+
+model Notification {
+  id       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId   String?           @db.Uuid
+  type     NotificationType
+  kind     NotificationKind
+  title    String
+  body     String            @db.Text
+  htmlBody String?           @db.Text
+  payload  Json              @default("{}")
+  readAt   DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, type, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+/// Outbox + tracking for async notification delivery (SQS worker).
+model NotificationJob {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobType     String   @map("job_type") @db.VarChar(100)
+  payload     Json
+  status      Int      @default(12)
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(5) @map("max_attempts")
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([jobType, status])
+  @@index([status])
+  @@map("notification_jobs")
+}
