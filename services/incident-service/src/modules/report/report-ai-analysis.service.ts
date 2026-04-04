@@ -65,7 +65,9 @@ export class ReportAiAnalysisService {
     if (sourceUrls.length === 0) {
       throw new Error("No source URLs found for AI analysis");
     }
-
+    console.log(
+      `Sending AI predict API request for report ${reportId} with ${sourceUrls.length} source URLs...`,
+    );
     const response = await axios.post<PredictApiResponse>(
       this.aiPredictUrl,
       {
@@ -75,7 +77,10 @@ export class ReportAiAnalysisService {
         timeout: 45_000,
       },
     );
-
+    console.log(
+      `AI predict API response for report ${reportId}:`,
+      response.data,
+    );
     const results = response.data?.results ?? [];
     if (results.length === 0) {
       throw new Error("AI predict API returned no results");

@@ -11,14 +11,12 @@ export class ReportMediaRepository {
   async create(data: {
     reportId?: string;
     mediaId: string;
-    stage?: string;
     uploadedBy?: string;
   }) {
     return this.prisma.reportMediaFile.create({
       data: {
         reportId: data.reportId,
         mediaId: data.mediaId,
-        stage: data.stage,
         uploadedBy: data.uploadedBy,
       },
     });
@@ -28,7 +26,6 @@ export class ReportMediaRepository {
     data: {
       reportId?: string;
       mediaId: string;
-      stage?: string;
       uploadedBy?: string;
     }[],
     tx?: Prisma.TransactionClient,
@@ -38,7 +35,6 @@ export class ReportMediaRepository {
       data: data.map((item) => ({
         reportId: item.reportId,
         mediaId: item.mediaId,
-        stage: item.stage,
         uploadedBy: item.uploadedBy,
       })),
     });
@@ -57,7 +53,7 @@ export class ReportMediaRepository {
     });
   }
 
-  async update(id: string, data: { mediaId?: string; stage?: string }) {
+  async update(id: string, data: { mediaId?: string }) {
     return this.prisma.reportMediaFile.update({
       where: { id },
       data,

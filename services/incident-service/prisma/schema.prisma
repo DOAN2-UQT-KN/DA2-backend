@@ -99,10 +99,6 @@ model ReportMediaFile {
 
   mediaId String @map("media_id") @db.Uuid
 
-  stage String? @db.VarChar(20)
-  // BEFORE
-  // AFTER
-
   uploadedBy String? @map("uploaded_by") @db.Uuid
 
   createdBy String? @map("created_by") @db.Uuid

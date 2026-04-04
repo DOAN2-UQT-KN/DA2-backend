@@ -60,7 +60,7 @@ export class BackgroundJobOrchestratorWorker {
           WAIT_TIME_SECONDS,
           VISIBILITY_TIMEOUT_SECONDS,
         );
-
+        console.log(messages, "@@@");
         for (const message of messages) {
           if (this.isShuttingDown) {
             break;

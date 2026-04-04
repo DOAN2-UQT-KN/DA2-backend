@@ -4,10 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
-import {
-  mountOpenApi,
-  routeModulesFrom,
-} from "@da2/express-swagger";
+import { mountOpenApi, routeModulesFrom } from "@da2/express-swagger";
 import { OPENAPI_ROUTE_MODELS } from "./openapi/route-models";
 import reportRoutes from "./modules/report/report.routes";
 import campaignRoutes from "./modules/campaign/campaign.routes";
@@ -16,11 +13,12 @@ import {
   camelCaseRequestBody,
   snakeCaseResponseBody,
 } from "./middleware/case-transform.middleware";
+import "./worker";
 
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 
 const swaggerRouteFiles = routeModulesFrom(__dirname, [
   "modules/report/report.routes",
@@ -37,8 +35,7 @@ app.use(
 mountOpenApi(app, {
   title: "Incident service",
   description: "Reports and campaigns",
-  serverUrl:
-    process.env.SWAGGER_SERVER_URL || `http://localhost:${PORT}`,
+  serverUrl: process.env.SWAGGER_SERVER_URL || `http://localhost:${PORT}`,
   routeFiles: swaggerRouteFiles,
   typescript: {
     projectRoot: path.join(__dirname, ".."),
@@ -70,8 +67,8 @@ app.use("/api/v1/campaigns", campaignRoutes);
 // Error handling
 app.use(errorHandler);
 
-// Start server
-app.listen(PORT, () => {
+// Bind all interfaces so Kubernetes http probes (pod IPv4) reach the server.
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Incident service running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || "development"}`);
 });

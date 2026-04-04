@@ -61,7 +61,7 @@ export interface ReportMediaFileResponse {
   id: string;
   mediaId: string;
   url: string | null;
-  stage: string | null;
+  ai_analysis_url: string | null;
   uploadedBy: string | null;
   createdAt: Date;
 }

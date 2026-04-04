@@ -11,11 +11,7 @@ import {
   ReportBackgroundJobsStatusResponse,
 } from "./report.dto";
 import { reportMediaRepository } from "./report_media.repository";
-import {
-  ReportStatus,
-  MediaFileStage,
-  MediaResourceType,
-} from "../../constants/status.enum";
+import { ReportStatus, MediaResourceType } from "../../constants/status.enum";
 import prisma from "../../config/prisma.client";
 import { randomUUID } from "node:crypto";
 import { reportAnalysisQueueService } from "./queue/report-analysis-queue.service";
@@ -101,7 +97,6 @@ export class ReportService {
           id: randomUUID(),
           reportId: createdReport.id,
           mediaId: m.id,
-          stage: MediaFileStage.BEFORE,
           uploadedBy: userId,
           createdBy: userId,
           updatedBy: userId,
@@ -156,6 +151,10 @@ export class ReportService {
     const report = await reportRepository.findByIdWithRelations(id);
     if (!report) return null;
 
+    const aiAnalysisUrlMap = await this.getAiAnalysisUrlMap(
+      report.reportMediaFiles.map((mf) => mf.id),
+    );
+
     const mediaUrlMap = await this.getMediaUrlMap(
       report.reportMediaFiles.map((mf) => mf.mediaId),
     );
@@ -166,11 +165,76 @@ export class ReportService {
         id: mf.id,
         mediaId: mf.mediaId,
         url: mediaUrlMap.get(mf.mediaId) ?? null,
-        stage: mf.stage,
+        ai_analysis_url: aiAnalysisUrlMap.get(mf.id) ?? null,
         uploadedBy: mf.uploadedBy,
         createdAt: mf.createdAt,
-      }))
+      })),
     };
+  }
+
+  private async getAiAnalysisUrlMap(
+    reportMediaFileIds: string[],
+  ): Promise<Map<string, string>> {
+    if (reportMediaFileIds.length === 0) {
+      return new Map();
+    }
+
+    const aiLogs = await prisma.aiAnalysisLog.findMany({
+      where: {
+        reportMediaFileId: { in: reportMediaFileIds },
+        mediaId: { not: null },
+      },
+      select: {
+        reportMediaFileId: true,
+        mediaId: true,
+        processedAt: true,
+      },
+      orderBy: {
+        processedAt: "desc",
+      },
+    });
+
+    const mediaIds = aiLogs
+      .map((log) => log.mediaId)
+      .filter((mediaId): mediaId is string => Boolean(mediaId));
+
+    if (mediaIds.length === 0) {
+      return new Map();
+    }
+
+    const mediaRecords = await prisma.media.findMany({
+      where: {
+        id: { in: mediaIds },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        url: true,
+      },
+    });
+
+    const mediaUrlMap = new Map(
+      mediaRecords.map((item) => [item.id, item.url]),
+    );
+    const aiAnalysisUrlMap = new Map<string, string>();
+
+    for (const log of aiLogs) {
+      if (!log.reportMediaFileId || !log.mediaId) {
+        continue;
+      }
+
+      // Keep the most recent analysis URL per media file.
+      if (aiAnalysisUrlMap.has(log.reportMediaFileId)) {
+        continue;
+      }
+
+      const aiAnalysisUrl = mediaUrlMap.get(log.mediaId);
+      if (aiAnalysisUrl) {
+        aiAnalysisUrlMap.set(log.reportMediaFileId, aiAnalysisUrl);
+      }
+    }
+
+    return aiAnalysisUrlMap;
   }
 
   async updateReport(
@@ -243,7 +307,6 @@ export class ReportService {
           data: {
             reportId,
             mediaId: media.id,
-            stage: MediaFileStage.BEFORE,
             uploadedBy: userId,
             createdBy: userId,
             updatedBy: userId,

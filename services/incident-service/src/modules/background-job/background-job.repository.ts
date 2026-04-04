@@ -182,10 +182,7 @@ export class BackgroundJobRepository {
         where: {
           ...reportPayload,
           status: {
-            in: [
-              GlobalStatus._STATUS_PENDING,
-              GlobalStatus._STATUS_INPROCESS,
-            ],
+            in: [GlobalStatus._STATUS_PENDING, GlobalStatus._STATUS_INPROCESS],
           },
         },
       }),
