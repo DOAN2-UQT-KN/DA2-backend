@@ -3,6 +3,8 @@ import { GlobalStatus } from "../../constants/status.enum";
 export interface CreateCampaignRequest {
   title: string;
   description?: string;
+  /** 1 = easy … 4 = very hard; must exist in reward-service `difficulties` table. */
+  difficulty: number;
   reportIds?: string[];
 }
 
@@ -10,6 +12,7 @@ export interface UpdateCampaignRequest {
   title?: string;
   description?: string;
   status?: GlobalStatus;
+  difficulty?: number;
   reportIds?: string[];
   managerIds?: string[];
 }
@@ -19,6 +22,10 @@ export interface CampaignResponse {
   title: string;
   description: string | null;
   status: number;
+  difficulty: number;
+  /** Green points for this difficulty tier (reward rules). */
+  greenPoints: number;
+  isVerify: boolean;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;

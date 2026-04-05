@@ -1,6 +1,6 @@
 import axios from "axios";
 import prisma from "../../config/prisma.client";
-import { MediaResourceType, ReportStatus } from "../../constants/status.enum";
+import { MediaResourceType } from "../../constants/status.enum";
 
 interface PredictResult {
   source_url?: string;
@@ -120,7 +120,6 @@ export class ReportAiAnalysisService {
       await tx.report.update({
         where: { id: reportId },
         data: {
-          status: ReportStatus._STATUS_VERIFIED,
           aiVerified: true,
         },
       });

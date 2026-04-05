@@ -52,6 +52,8 @@ export interface ReportResponse {
   latitude: number | null;
   longitude: number | null;
   status: number | null;
+  /** Admin verification; only admins can set true. */
+  isVerify: boolean;
   aiVerified: boolean;
   createdAt: Date;
   updatedAt: Date;

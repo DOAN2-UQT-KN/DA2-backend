@@ -25,6 +25,9 @@ export class CampaignController {
   createCampaign = [
     body("title").notEmpty().withMessage("Title is required").trim(),
     body("description").optional().trim(),
+    body("difficulty")
+      .isInt({ min: 1 })
+      .withMessage("difficulty must be a positive integer (reward-service tier)"),
     body("reportIds")
       .optional()
       .isArray()
@@ -57,6 +60,21 @@ export class CampaignController {
             return sendError(
               res,
               HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
+            );
+          }
+          if (error.message.includes("Invalid campaign difficulty")) {
+            return sendError(
+              res,
+              HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
+            );
+          }
+          if (
+            error.message.includes("REWARD_SERVICE_URL") ||
+            error.message.includes("INTERNAL_REWARD_API_KEY")
+          ) {
+            return sendError(
+              res,
+              HTTP_STATUS.INTERNAL_SERVER_ERROR.withMessage(error.message),
             );
           }
         }
@@ -145,11 +163,69 @@ export class CampaignController {
     },
   ];
 
+  /**
+   * Verify a campaign (admin only).
+   */
+  adminVerifyCampaign = [
+    param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      try {
+        const userId = req.user?.userId;
+        if (!userId) {
+          return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+        }
+
+        const role = req.user?.role;
+        const normalizedRole = role?.toLowerCase();
+        if (!normalizedRole || normalizedRole !== "admin") {
+          return sendError(
+            res,
+            HTTP_STATUS.FORBIDDEN.withMessage(
+              "Only admin can verify a campaign",
+            ),
+          );
+        }
+
+        const campaign = await campaignService.adminVerifyCampaign(
+          req.params.id,
+        );
+        sendSuccess(
+          res,
+          HTTP_STATUS.OK.withMessage("Campaign verified successfully"),
+          { campaign },
+        );
+      } catch (error) {
+        console.error("Admin verify campaign error:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("not found")) {
+            return sendError(
+              res,
+              HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
+            );
+          }
+        }
+        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      }
+    },
+  ];
+
   updateCampaign = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
     body("title").optional().trim(),
     body("description").optional().trim(),
     body("status").optional().isInt().withMessage("Status must be an integer"),
+    body("difficulty")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("difficulty must be a positive integer (reward-service tier)"),
     body("reportIds")
       .optional()
       .isArray()
@@ -212,6 +288,21 @@ export class CampaignController {
             return sendError(
               res,
               HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
+            );
+          }
+          if (error.message.includes("Invalid campaign difficulty")) {
+            return sendError(
+              res,
+              HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
+            );
+          }
+          if (
+            error.message.includes("REWARD_SERVICE_URL") ||
+            error.message.includes("INTERNAL_REWARD_API_KEY")
+          ) {
+            return sendError(
+              res,
+              HTTP_STATUS.INTERNAL_SERVER_ERROR.withMessage(error.message),
             );
           }
         }
@@ -494,6 +585,24 @@ export class CampaignController {
             return sendError(
               res,
               HTTP_STATUS.CONFLICT.withMessage("Join request already processed"),
+            );
+          }
+          if (error.message.includes("capacity exceeded")) {
+            return sendError(
+              res,
+              HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
+            );
+          }
+          if (
+            error.message.includes("REWARD_SERVICE_URL") ||
+            error.message.includes("INTERNAL_REWARD_API_KEY") ||
+            error.message.includes("Invalid reward service")
+          ) {
+            return sendError(
+              res,
+              HTTP_STATUS.INTERNAL_SERVER_ERROR.withMessage(
+                error.message,
+              ),
             );
           }
         }

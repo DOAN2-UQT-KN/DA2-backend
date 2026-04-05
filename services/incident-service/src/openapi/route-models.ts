@@ -30,6 +30,9 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
   "DELETE /api/v1/reports/:id/media/:mediaFileId": {
     responseData: "ReportOneEnvelopeData",
   },
+  "PUT /api/v1/reports/:id/verify": {
+    responseData: "ReportOneEnvelopeData",
+  },
   "PUT /api/v1/reports/:id/ban": {
     responseData: "ReportOneEnvelopeData",
   },
@@ -71,6 +74,9 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
     responseData: "TaskOneEnvelopeData",
   },
   "GET /api/v1/campaigns/:id": {
+    responseData: "CampaignOneEnvelopeData",
+  },
+  "PUT /api/v1/campaigns/:id/verify": {
     responseData: "CampaignOneEnvelopeData",
   },
   "PUT /api/v1/campaigns/:id": {

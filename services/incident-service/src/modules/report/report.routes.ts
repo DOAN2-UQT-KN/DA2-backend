@@ -69,6 +69,13 @@ router.delete(
 );
 
 /**
+ * @route   PUT /api/v1/reports/:id/verify
+ * @desc    Admin-verify a report
+ * @access  Private (Admin only)
+ */
+router.put("/:id/verify", authenticate, reportController.adminVerifyReport);
+
+/**
  * @route   PUT /api/v1/reports/:id/ban
  * @desc    Ban a report (moderation)
  * @access  Private (Admin only)

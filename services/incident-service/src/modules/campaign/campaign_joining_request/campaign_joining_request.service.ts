@@ -1,3 +1,4 @@
+import { rewardServiceClient } from "../../reward/reward-service.client";
 import { campaignJoiningRequestRepository } from "./campaign_joining_request.repository";
 import { campaignRepository } from "../campaign.repository";
 import { campaignManagerRepository } from "../campaign_manager/campaign_manager.repository";
@@ -30,6 +31,7 @@ export interface JoinRequestDetailResponse extends JoinRequestResponse {
         id: string;
         title: string;
         status: number;
+        difficulty: number;
     };
 }
 
@@ -192,6 +194,21 @@ export class CampaignJoiningRequestService {
             throw new Error("Join request already processed");
         }
 
+        if (status === JoinRequestStatus._STATUS_APPROVED) {
+            const difficulty = request.campaign?.difficulty;
+            if (difficulty === undefined || difficulty === null) {
+                throw new Error("Campaign difficulty missing");
+            }
+            const approvedCount =
+                await campaignJoiningRequestRepository.countApprovedByCampaignId(
+                    request.campaignId,
+                );
+            await rewardServiceClient.assertCampaignHasCapacityForJoinApproval(
+                approvedCount,
+                difficulty,
+            );
+        }
+
         const updated = await campaignJoiningRequestRepository.updateStatus(
             requestId,
             status,
@@ -302,6 +319,7 @@ export class CampaignJoiningRequestService {
                     id: r.campaign.id,
                     title: r.campaign.title,
                     status: r.campaign.status,
+                    difficulty: r.campaign.difficulty,
                 }
                 : undefined,
         };

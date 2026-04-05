@@ -34,6 +34,7 @@ export class CampaignJoiningRequestRepository {
                         id: true,
                         title: true,
                         status: true,
+                        difficulty: true,
                     },
                 },
             },
@@ -123,6 +124,7 @@ export class CampaignJoiningRequestRepository {
                     id: true,
                     title: true,
                     status: true,
+                    difficulty: true,
                 },
             },
         };
@@ -151,6 +153,16 @@ export class CampaignJoiningRequestRepository {
         return this.prisma.campaignJoiningRequest.update({
             where: { id },
             data: { deletedAt: new Date() },
+        });
+    }
+
+    async countApprovedByCampaignId(campaignId: string): Promise<number> {
+        return this.prisma.campaignJoiningRequest.count({
+            where: {
+                campaignId,
+                status: JoinRequestStatus._STATUS_APPROVED,
+                deletedAt: null,
+            },
         });
     }
 

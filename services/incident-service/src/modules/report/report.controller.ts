@@ -363,6 +363,49 @@ export class ReportController {
   ];
 
   /**
+   * Verify a report (admin only). Sets is_verify and status verified.
+   */
+  adminVerifyReport = [
+    param("id").isUUID().withMessage("Report ID must be a valid UUID"),
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      try {
+        const userId = req.user?.userId;
+        if (!userId) {
+          return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+        }
+
+        const role = req.user?.role;
+        const normalizedRole = role?.toLowerCase();
+        if (!normalizedRole || normalizedRole !== "admin") {
+          return sendError(
+            res,
+            HTTP_STATUS.FORBIDDEN.withMessage("Only admin can verify a report"),
+          );
+        }
+
+        const report = await reportService.adminVerifyReport(req.params.id);
+        sendSuccess(
+          res,
+          HTTP_STATUS.OK.withMessage("Report verified successfully"),
+          { report },
+        );
+      } catch (error) {
+        console.error("Admin verify report error:", error);
+        if (sendHttpErrorResponse(res, error)) return;
+        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      }
+    },
+  ];
+
+  /**
    * Mark report as done (admin only)
    */
   adminMarkReportDone = [

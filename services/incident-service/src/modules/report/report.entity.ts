@@ -18,6 +18,7 @@ export const toReportResponse = (
   latitude: entity.latitude,
   longitude: entity.longitude,
   status: entity.status,
+  isVerify: entity.isVerify,
   aiVerified: entity.aiVerified,
   createdAt: entity.createdAt,
   updatedAt: entity.updatedAt,

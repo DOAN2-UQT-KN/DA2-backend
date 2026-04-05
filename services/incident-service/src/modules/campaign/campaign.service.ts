@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
 import { HTTP_STATUS } from "../../constants/http-status";
+import { rewardServiceClient } from "../reward/reward-service.client";
 import { campaignRepository } from "./campaign.repository";
 import {
   CampaignListQuery,
@@ -8,15 +9,37 @@ import {
   CreateCampaignRequest,
   UpdateCampaignRequest,
 } from "./campaign.dto";
-import { toCampaignResponse } from "./campaign.entity";
+import {
+  CampaignWithReports,
+  toCampaignResponse,
+} from "./campaign.entity";
 
 export class CampaignService {
   constructor() {}
+
+  private async toResponse(
+    entity: CampaignWithReports,
+  ): Promise<CampaignResponse> {
+    const tier = await rewardServiceClient.getDifficultyByLevel(
+      entity.difficulty,
+    );
+    const greenPoints = tier?.greenPoints ?? 0;
+    return toCampaignResponse(entity, greenPoints);
+  }
 
   async createCampaign(
     userId: string,
     request: CreateCampaignRequest,
   ): Promise<CampaignResponse> {
+    const tier = await rewardServiceClient.getDifficultyByLevel(
+      request.difficulty,
+    );
+    if (!tier) {
+      throw new Error(
+        "Invalid campaign difficulty; no matching tier in reward service",
+      );
+    }
+
     const reportIds = this.normalizeReportIds(request.reportIds);
     const managerIds = [userId];
     await this.validateReportIds(reportIds);
@@ -27,6 +50,8 @@ export class CampaignService {
           data: {
             title: request.title,
             description: request.description,
+            difficulty: request.difficulty,
+            isVerify: false,
             createdBy: userId,
             updatedBy: userId,
           },
@@ -65,12 +90,12 @@ export class CampaignService {
       throw new Error("Failed to create campaign");
     }
 
-    return toCampaignResponse(created);
+    return this.toResponse(created);
   }
 
   async getCampaignById(id: string): Promise<CampaignResponse | null> {
     const campaign = await campaignRepository.findById(id);
-    return campaign ? toCampaignResponse(campaign) : null;
+    return campaign ? this.toResponse(campaign) : null;
   }
 
   async getCampaigns(query: CampaignListQuery): Promise<{
@@ -99,8 +124,18 @@ export class CampaignService {
       sortOrder,
     });
 
+    const difficulties = await rewardServiceClient.getDifficulties();
+    const greenByLevel = new Map(
+      difficulties.map((d) => [d.level, d.greenPoints]),
+    );
+
     return {
-      campaigns: rows.map((campaign) => toCampaignResponse(campaign)),
+      campaigns: rows.map((campaign) =>
+        toCampaignResponse(
+          campaign,
+          greenByLevel.get(campaign.difficulty) ?? 0,
+        ),
+      ),
       total,
       page,
       limit,
@@ -119,6 +154,17 @@ export class CampaignService {
     }
 
     this.ensureOwner(existing.createdBy, userId);
+
+    if (request.difficulty !== undefined) {
+      const nextTier = await rewardServiceClient.getDifficultyByLevel(
+        request.difficulty,
+      );
+      if (!nextTier) {
+        throw new Error(
+          "Invalid campaign difficulty; no matching tier in reward service",
+        );
+      }
+    }
 
     const shouldUpdateReports = request.reportIds !== undefined;
     const reportIds = shouldUpdateReports
@@ -144,6 +190,9 @@ export class CampaignService {
             title: request.title,
             description: request.description,
             status: request.status,
+            ...(request.difficulty !== undefined
+              ? { difficulty: request.difficulty }
+              : {}),
             updatedBy: userId,
           },
         });
@@ -191,7 +240,20 @@ export class CampaignService {
       },
     );
 
-    return toCampaignResponse(updated);
+    return this.toResponse(updated);
+  }
+
+  /** Admin-only at controller: mark campaign as verified. */
+  async adminVerifyCampaign(id: string): Promise<CampaignResponse> {
+    const existing = await campaignRepository.findById(id);
+    if (!existing) {
+      throw new Error("Campaign not found");
+    }
+
+    const updated = await campaignRepository.update(id, {
+      isVerify: true,
+    });
+    return this.toResponse(updated);
   }
 
   async deleteCampaign(id: string, userId: string): Promise<void> {

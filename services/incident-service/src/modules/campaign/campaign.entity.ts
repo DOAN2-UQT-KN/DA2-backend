@@ -10,6 +10,7 @@ export type CampaignWithReports = Campaign & {
 
 export const toCampaignResponse = (
   entity: CampaignWithReports,
+  greenPoints: number,
 ): CampaignResponse => {
   const managerIds = entity.campaignManagers.map((manager) => manager.userId);
 
@@ -18,6 +19,9 @@ export const toCampaignResponse = (
     title: entity.title,
     description: entity.description,
     status: entity.status,
+    difficulty: entity.difficulty,
+    greenPoints,
+    isVerify: entity.isVerify,
     createdBy: entity.createdBy,
     updatedBy: entity.updatedBy,
     createdAt: entity.createdAt,

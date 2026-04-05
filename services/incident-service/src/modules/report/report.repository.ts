@@ -224,6 +224,7 @@ export class ReportRepository {
                 latitude,
                 longitude,
                 status,
+                is_verify as "isVerify",
                 ai_verified as "aiVerified",
                 created_at as "createdAt",
                 updated_at as "updatedAt",

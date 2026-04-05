@@ -96,6 +96,17 @@ router.put(
 router.get("/:id", authenticate, campaignController.getCampaignById);
 
 /**
+ * @route   PUT /api/v1/campaigns/:id/verify
+ * @desc    Mark campaign as admin-verified
+ * @access  Private (Admin only)
+ */
+router.put(
+  "/:id/verify",
+  authenticate,
+  campaignController.adminVerifyCampaign,
+);
+
+/**
  * @route   PUT /api/v1/campaigns/:id
  * @desc    Update campaign by ID
  * @access  Private (Campaign manager only)

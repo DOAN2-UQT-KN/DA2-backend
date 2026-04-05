@@ -81,6 +81,7 @@ export class ReportService {
           latitude: request.latitude,
           longitude: request.longitude,
           status: ReportStatus._STATUS_PENDING,
+          isVerify: false,
           aiVerified: false,
         },
       });
@@ -426,6 +427,26 @@ export class ReportService {
     }
 
     const report = await reportRepository.markReportAsDone(id);
+    return toReportResponse(report);
+  }
+
+  /**
+   * Admin verification workflow: marks report verified (separate from AI aiVerified).
+   */
+  async adminVerifyReport(id: string): Promise<ReportResponse> {
+    const existing = await reportRepository.findById(id);
+    if (!existing) {
+      throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
+    }
+
+    if (existing.isVerify) {
+      return toReportResponse(existing);
+    }
+
+    const report = await reportRepository.update(id, {
+      isVerify: true,
+      status: ReportStatus._STATUS_VERIFIED,
+    });
     return toReportResponse(report);
   }
 

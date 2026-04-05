@@ -1,0 +1,32 @@
+generator client {
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Configurable campaign difficulty tier: volunteer cap and green-point reward.
+/// Referenced by `campaigns.difficulty` (level) in incident-service.
+model Difficulty {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Unique tier index (1 = easy … 4 = very hard).
+  level Int @unique
+
+  name String @db.VarChar(64)
+
+  /// Maximum approved volunteers; null means no limit (very hard).
+  maxVolunteers Int? @map("max_volunteers")
+
+  greenPoints Int @map("green_points")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([deletedAt])
+  @@map("difficulties")
+}
