@@ -47,6 +47,18 @@ export enum MediaResourceType {
   OTHER = "OTHER",
 }
 
+/** Targets for user votes (reports, campaigns). Stored as lowercase in API and DB. */
+export enum VoteResourceType {
+  REPORT = "report",
+  CAMPAIGN = "campaign",
+}
+
+export const VoteValue = {
+  NONE: 0,
+  UP: 1,
+  DOWN: -1,
+} as const;
+
 export class StatusValidator {
   static isValidStatus(status: number): boolean {
     return Object.values(GlobalStatus).includes(status as GlobalStatus);

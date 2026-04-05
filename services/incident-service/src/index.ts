@@ -8,6 +8,7 @@ import { mountOpenApi, routeModulesFrom } from "@da2/express-swagger";
 import { OPENAPI_ROUTE_MODELS } from "./openapi/route-models";
 import reportRoutes from "./modules/report/report.routes";
 import campaignRoutes from "./modules/campaign/campaign.routes";
+import voteRoutes from "./modules/vote/vote.routes";
 import { errorHandler } from "./middleware/error.middleware";
 import {
   camelCaseRequestBody,
@@ -22,6 +23,7 @@ const PORT = Number(process.env.PORT) || 3001;
 const swaggerRouteFiles = routeModulesFrom(__dirname, [
   "modules/report/report.routes",
   "modules/campaign/campaign.routes",
+  "modules/vote/vote.routes",
 ]);
 
 // Middleware
@@ -62,6 +64,7 @@ app.get("/health", (_req, res) => {
 // Routes
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/campaigns", campaignRoutes);
+app.use("/api/v1/votes", voteRoutes);
 
 // Error handling
 app.use(errorHandler);
