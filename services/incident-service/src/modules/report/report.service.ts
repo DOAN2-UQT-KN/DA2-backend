@@ -80,6 +80,7 @@ export class ReportService {
           severityLevel: request.severityLevel,
           latitude: request.latitude,
           longitude: request.longitude,
+          detailAddress: request.detailAddress,
           status: ReportStatus._STATUS_PENDING,
           isVerify: false,
           aiVerified: false,
@@ -302,6 +303,7 @@ export class ReportService {
       severityLevel: request.severityLevel,
       latitude: request.latitude,
       longitude: request.longitude,
+      detailAddress: request.detailAddress,
     });
 
     return toReportResponse(report);

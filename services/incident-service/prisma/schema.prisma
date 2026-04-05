@@ -26,6 +26,9 @@ model Report {
   latitude  Float?
   longitude Float?
 
+  /** Human-readable location text (e.g. street / place name from reverse geocoding). */
+  detailAddress String? @map("detail_address")
+
   status Int? @default(12)
 
   /** Admin moderation: only admins can set true (see verify endpoint). */

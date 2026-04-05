@@ -81,6 +81,7 @@ export class ReportController {
       .bail()
       .isFloat({ min: -180, max: 180 })
       .withMessage("Invalid longitude"),
+    body("detailAddress").optional().trim(),
     body("imageUrls")
       .isArray({ min: 1 })
       .withMessage("imageUrls must be a non-empty array"),
@@ -248,6 +249,7 @@ export class ReportController {
       .optional()
       .isFloat({ min: -180, max: 180 })
       .withMessage("Invalid longitude"),
+    body("detailAddress").optional().trim(),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);

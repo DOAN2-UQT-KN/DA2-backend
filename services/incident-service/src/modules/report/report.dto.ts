@@ -6,6 +6,8 @@ export interface CreateReportRequest {
   severityLevel?: number;
   latitude: number;
   longitude: number;
+  /** Optional human-readable address for the report location. */
+  detailAddress?: string;
   imageUrls: string[]; // Array of image URLs
 }
 
@@ -16,6 +18,7 @@ export interface UpdateReportRequest {
   severityLevel?: number;
   latitude?: number;
   longitude?: number;
+  detailAddress?: string;
 }
 
 export interface AddReportImagesRequest {
@@ -51,6 +54,7 @@ export interface ReportResponse {
   severityLevel: number | null;
   latitude: number | null;
   longitude: number | null;
+  detailAddress: string | null;
   status: number | null;
   /** Admin verification; only admins can set true. */
   isVerify: boolean;
