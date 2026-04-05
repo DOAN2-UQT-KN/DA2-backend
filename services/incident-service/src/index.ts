@@ -14,7 +14,7 @@ import {
   camelCaseRequestBody,
   snakeCaseResponseBody,
 } from "./middleware/case-transform.middleware";
-
+import "./worker";
 dotenv.config();
 
 const app: Application = express();
