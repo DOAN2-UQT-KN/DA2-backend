@@ -7,8 +7,9 @@ const router = Router();
 
 /**
  * @route   POST /api/v1/campaigns
- * @desc    Create a new campaign and optionally link reports
+ * @desc    Create a new campaign under an organization (must be that org's owner); optionally link reports
  * @access  Private
+ * @body    { organizationId, title, description?, difficulty, reportIds? }
  */
 router.post("/", authenticate, campaignController.createCampaign);
 

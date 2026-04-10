@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
 import { GlobalStatus, VoteResourceType } from "../../constants/status.enum";
-import { HTTP_STATUS } from "../../constants/http-status";
+import { HttpError, HTTP_STATUS } from "../../constants/http-status";
+import { organizationRepository } from "../organization/organization.repository";
 import { rewardServiceClient } from "../reward/reward-service.client";
 import { campaignJoiningRequestRepository } from "./campaign_joining_request/campaign_joining_request.repository";
 import { campaignRepository } from "./campaign.repository";
@@ -66,6 +67,20 @@ export class CampaignService {
     request: CreateCampaignRequest,
     viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
+    const org = await organizationRepository.findById(request.organizationId);
+    if (!org) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+    if (org.ownerId !== userId) {
+      throw new HttpError(
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Only the organization owner can create campaigns",
+        ),
+      );
+    }
+
     const tier = await rewardServiceClient.getDifficultyByLevel(
       request.difficulty,
     );
@@ -88,6 +103,7 @@ export class CampaignService {
             difficulty: request.difficulty,
             status: GlobalStatus._STATUS_INREVIEW,
             isVerify: false,
+            organizationId: request.organizationId,
             createdBy: userId,
             updatedBy: userId,
           },

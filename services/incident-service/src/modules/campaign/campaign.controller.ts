@@ -27,6 +27,9 @@ export class CampaignController {
   constructor() { }
 
   createCampaign = [
+    body("organizationId")
+      .isUUID()
+      .withMessage("organizationId must be a valid UUID"),
     body("title").notEmpty().withMessage("Title is required").trim(),
     body("description").optional().trim(),
     body("difficulty")
@@ -59,6 +62,9 @@ export class CampaignController {
         sendSuccess(res, HTTP_STATUS.CREATED, { campaign });
       } catch (error) {
         console.error("Create campaign error:", error);
+        if (sendHttpErrorResponse(res, error)) {
+          return;
+        }
         if (error instanceof Error) {
           if (error.message.includes("reportIds")) {
             return sendError(

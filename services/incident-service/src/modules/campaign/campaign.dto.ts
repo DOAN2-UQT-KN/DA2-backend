@@ -2,6 +2,8 @@ import { GlobalStatus } from "../../constants/status.enum";
 import type { ResourceVoteSummary } from "../vote/vote.dto";
 
 export interface CreateCampaignRequest {
+  /** Organization that owns this campaign; caller must be that organization's owner. */
+  organizationId: string;
   title: string;
   description?: string;
   /** 1 = easy … 4 = very hard; must exist in reward-service `difficulties` table. */
@@ -20,6 +22,7 @@ export interface UpdateCampaignRequest {
 
 export interface CampaignResponse {
   id: string;
+  organizationId: string;
   title: string;
   description: string | null;
   status: number;

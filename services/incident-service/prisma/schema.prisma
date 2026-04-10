@@ -68,6 +68,9 @@ model Campaign {
   /** Admin moderation: only admins can set true (see verify endpoint). */
   isVerify Boolean @default(false) @map("is_verify")
 
+  organizationId String @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
 
@@ -84,6 +87,7 @@ model Campaign {
 
   @@index([status])
   @@index([createdBy])
+  @@index([organizationId])
   @@index([deletedAt])
   @@map("campaigns")
 }
@@ -416,6 +420,7 @@ model Organization {
 
   members      OrganizationMember[]
   joinRequests OrganizationJoiningRequest[]
+  campaigns    Campaign[]
 
   @@index([ownerId])
   @@index([deletedAt])
