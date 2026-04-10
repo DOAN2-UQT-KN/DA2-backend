@@ -165,4 +165,42 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
     requestBody: "SaveResourceBody",
     responseData: "SaveResourceEnvelopeData",
   },
+
+  "POST /api/v1/organizations": {
+    requestBody: "CreateOrganizationBody",
+    responseData: "OrganizationOneEnvelopeData",
+  },
+  "GET /api/v1/organizations": {
+    query: "OrganizationListQuery",
+    responseData: "PaginatedOrganizationsEnvelopeData",
+  },
+  "GET /api/v1/organizations/owned": {
+    responseData: "MyOrganizationsEnvelopeData",
+  },
+  "GET /api/v1/organizations/:id": {
+    responseData: "OrganizationOneEnvelopeData",
+  },
+  "POST /api/v1/organizations/:id/join-requests": {
+    responseData: "OrganizationJoinRequestOneEnvelopeData",
+  },
+  "GET /api/v1/organizations/:id/join-requests": {
+    query: "GetOrganizationJoinRequestsQuery",
+    responseData: "PaginatedOrganizationJoinRequestsEnvelopeData",
+  },
+  "GET /api/v1/organizations/join-requests/my": {
+    query: "MyOrganizationJoinRequestsQuery",
+    responseData: "PaginatedOrganizationJoinRequestsDetailEnvelopeData",
+  },
+  "PUT /api/v1/organizations/join-requests/process": {
+    requestBody: "ProcessOrganizationJoinRequestBody",
+    responseData: "OrganizationJoinRequestOneEnvelopeData",
+  },
+  "DELETE /api/v1/organizations/join-requests/cancel": {
+    requestBody: "CancelOrganizationJoinRequestBody",
+    omitData: true,
+  },
+  "GET /api/v1/organizations/:id/members": {
+    query: "OrganizationMembersListQuery",
+    responseData: "PaginatedOrganizationMembersEnvelopeData",
+  },
 };

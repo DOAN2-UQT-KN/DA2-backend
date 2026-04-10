@@ -1,0 +1,412 @@
+import {
+  GlobalStatus,
+  JoinRequestStatus,
+} from "../../constants/status.enum";
+import {
+  HttpError,
+  HTTP_STATUS,
+} from "../../constants/http-status";
+import prisma from "../../config/prisma.client";
+import type {
+  CreateOrganizationBody,
+  GetOrganizationJoinRequestsQuery,
+  MyOrganizationJoinRequestsQuery,
+  OrganizationJoinRequestDetailResponse,
+  OrganizationJoinRequestResponse,
+  OrganizationListQuery,
+  OrganizationMemberResponse,
+  OrganizationMembersListQuery,
+  OrganizationResponse,
+} from "./organization.dto";
+import { organizationJoiningRequestRepository } from "./organization_joining_request.repository";
+import { organizationMemberRepository } from "./organization_member.repository";
+import { organizationRepository } from "./organization.repository";
+
+export class OrganizationService {
+  private toOrganizationResponse(row: {
+    id: string;
+    name: string;
+    description: string | null;
+    ownerId: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }): OrganizationResponse {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      ownerId: row.ownerId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toJoinRequestResponse(row: {
+    id: string;
+    organizationId: string;
+    requesterId: string;
+    status: number;
+    createdAt: Date;
+    updatedAt: Date;
+  }): OrganizationJoinRequestResponse {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      requesterId: row.requesterId,
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private toJoinRequestDetailResponse(r: any): OrganizationJoinRequestDetailResponse {
+    const base = this.toJoinRequestResponse(r);
+    const org = r.organization;
+    return {
+      ...base,
+      organization:
+        org && !org.deletedAt
+          ? {
+              id: org.id,
+              name: org.name,
+              ownerId: org.ownerId,
+            }
+          : undefined,
+    };
+  }
+
+  async createOrganization(
+    ownerId: string,
+    body: CreateOrganizationBody,
+  ): Promise<OrganizationResponse> {
+    const created = await organizationRepository.create({
+      name: body.name.trim(),
+      description: body.description?.trim() || null,
+      ownerId,
+      createdBy: ownerId,
+    });
+    return this.toOrganizationResponse(created);
+  }
+
+  async getById(organizationId: string): Promise<OrganizationResponse | null> {
+    const row = await organizationRepository.findById(organizationId);
+    if (!row) return null;
+    return this.toOrganizationResponse(row);
+  }
+
+  async listOwnedByUser(ownerId: string): Promise<OrganizationResponse[]> {
+    const rows = await organizationRepository.findOwnedByUser(ownerId);
+    return rows.map((r) => this.toOrganizationResponse(r));
+  }
+
+  async listOrganizations(query: OrganizationListQuery): Promise<{
+    organizations: OrganizationResponse[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const sortBy = query.sortBy ?? "createdAt";
+    const sortOrder = query.sortOrder ?? "desc";
+    const skip = (page - 1) * limit;
+
+    const { rows, total } = await organizationRepository.findManyPaginated(
+      { search: query.search },
+      { skip, take: limit, sortBy, sortOrder },
+    );
+
+    return {
+      organizations: rows.map((r) => this.toOrganizationResponse(r)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 0,
+    };
+  }
+
+  async createJoinRequest(
+    organizationId: string,
+    requesterId: string,
+  ): Promise<OrganizationJoinRequestResponse> {
+    const org = await organizationRepository.findById(organizationId);
+    if (!org) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+
+    if (org.ownerId === requesterId) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage(
+          "Organization owner cannot request to join",
+        ),
+      );
+    }
+
+    const isMember = await organizationMemberRepository.isActiveMember(
+      organizationId,
+      requesterId,
+    );
+    if (isMember) {
+      throw new HttpError(
+        HTTP_STATUS.CONFLICT.withMessage("Already a member of this organization"),
+      );
+    }
+
+    const pending =
+      await organizationJoiningRequestRepository.findPending(
+        organizationId,
+        requesterId,
+      );
+    if (pending) {
+      throw new HttpError(HTTP_STATUS.JOIN_REQUEST_ALREADY_EXISTS);
+    }
+
+    const row = await organizationJoiningRequestRepository.create({
+      organizationId,
+      requesterId,
+    });
+    return this.toJoinRequestResponse(row);
+  }
+
+  async listJoinRequestsForOwner(
+    organizationId: string,
+    ownerId: string,
+    query: GetOrganizationJoinRequestsQuery,
+  ): Promise<{
+    joinRequests: OrganizationJoinRequestResponse[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const org = await organizationRepository.findById(organizationId);
+    if (!org) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+    if (org.ownerId !== ownerId) {
+      throw new HttpError(
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Only the organization owner can view join requests",
+        ),
+      );
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const sortBy = query.sortBy ?? "createdAt";
+    const sortOrder = query.sortOrder ?? "desc";
+    const skip = (page - 1) * limit;
+
+    const { rows, total } =
+      await organizationJoiningRequestRepository.findByOrganizationPaginated(
+        organizationId,
+        {
+          status: query.status,
+          requesterId: query.requesterId,
+        },
+        { skip, take: limit, sortBy, sortOrder },
+      );
+
+    return {
+      joinRequests: rows.map((r) => this.toJoinRequestResponse(r)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 0,
+    };
+  }
+
+  async getMyJoinRequests(
+    requesterId: string,
+    query: MyOrganizationJoinRequestsQuery,
+  ): Promise<{
+    joinRequests: OrganizationJoinRequestDetailResponse[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const sortBy = query.sortBy ?? "createdAt";
+    const sortOrder = query.sortOrder ?? "desc";
+    const skip = (page - 1) * limit;
+
+    const { rows, total } =
+      await organizationJoiningRequestRepository.findByRequesterPaginated(
+        requesterId,
+        {
+          organizationId: query.organizationId,
+          status: query.status,
+        },
+        { skip, take: limit, sortBy, sortOrder },
+      );
+
+    return {
+      joinRequests: rows.map((r) => this.toJoinRequestDetailResponse(r)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 0,
+    };
+  }
+
+  async processJoinRequest(
+    requestId: string,
+    ownerId: string,
+    status: GlobalStatus._STATUS_APPROVED | GlobalStatus._STATUS_REJECTED,
+  ): Promise<OrganizationJoinRequestResponse> {
+    const request =
+      await organizationJoiningRequestRepository.findByIdWithOrganization(
+        requestId,
+      );
+    if (!request || !request.organization) {
+      throw new HttpError(HTTP_STATUS.JOIN_REQUEST_NOT_FOUND);
+    }
+
+    if (request.organization.deletedAt != null) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+
+    if (request.organization.ownerId !== ownerId) {
+      throw new HttpError(
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Only the organization owner can process join requests",
+        ),
+      );
+    }
+
+    if (request.status !== JoinRequestStatus._STATUS_PENDING) {
+      throw new HttpError(HTTP_STATUS.JOIN_REQUEST_ALREADY_PROCESSED);
+    }
+
+    if (status === JoinRequestStatus._STATUS_APPROVED) {
+      await prisma.$transaction([
+        prisma.organizationJoiningRequest.update({
+          where: { id: requestId },
+          data: { status },
+        }),
+        prisma.organizationMember.upsert({
+          where: {
+            organizationId_userId: {
+              organizationId: request.organizationId,
+              userId: request.requesterId,
+            },
+          },
+          create: {
+            organizationId: request.organizationId,
+            userId: request.requesterId,
+            createdBy: ownerId,
+          },
+          update: {
+            deletedAt: null,
+            updatedAt: new Date(),
+            updatedBy: ownerId,
+          },
+        }),
+      ]);
+    } else {
+      await organizationJoiningRequestRepository.updateStatus(
+        requestId,
+        status,
+      );
+    }
+
+    const updated =
+      await organizationJoiningRequestRepository.findById(requestId);
+    if (!updated) {
+      throw new HttpError(HTTP_STATUS.JOIN_REQUEST_NOT_FOUND);
+    }
+    return this.toJoinRequestResponse(updated);
+  }
+
+  async cancelJoinRequest(
+    requestId: string,
+    requesterId: string,
+  ): Promise<void> {
+    const request =
+      await organizationJoiningRequestRepository.findById(requestId);
+    if (!request) {
+      throw new HttpError(HTTP_STATUS.JOIN_REQUEST_NOT_FOUND);
+    }
+
+    if (request.requesterId !== requesterId) {
+      throw new HttpError(
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Cannot cancel another user's join request",
+        ),
+      );
+    }
+
+    if (request.status !== JoinRequestStatus._STATUS_PENDING) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage("Can only cancel pending requests"),
+      );
+    }
+
+    await organizationJoiningRequestRepository.softDelete(requestId);
+  }
+
+  async listMembersForOwner(
+    organizationId: string,
+    ownerId: string,
+    query: OrganizationMembersListQuery,
+  ): Promise<{
+    members: OrganizationMemberResponse[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const org = await organizationRepository.findById(organizationId);
+    if (!org) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+    if (org.ownerId !== ownerId) {
+      throw new HttpError(
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Only the organization owner can list members",
+        ),
+      );
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const sortBy = query.sortBy ?? "createdAt";
+    const sortOrder = query.sortOrder ?? "desc";
+    const skip = (page - 1) * limit;
+
+    const { rows, total } =
+      await organizationMemberRepository.findByOrganizationPaginated(
+        organizationId,
+        { userId: query.userId },
+        { skip, take: limit, sortBy, sortOrder },
+      );
+
+    const members: OrganizationMemberResponse[] = rows.map((r) => ({
+      organizationId: r.organizationId,
+      userId: r.userId,
+      createdAt: r.createdAt,
+    }));
+
+    return {
+      members,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 0,
+    };
+  }
+}
+
+export const organizationService = new OrganizationService();

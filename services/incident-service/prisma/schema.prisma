@@ -398,3 +398,67 @@ model SavedResource {
   @@index([userId])
   @@map("saved_resources")
 }
+
+/** A group with exactly one owner (`ownerId`). Other users join via `OrganizationJoiningRequest`. */
+model Organization {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @db.VarChar(200)
+  description String?
+
+  ownerId String @map("owner_id") @db.Uuid
+
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  members      OrganizationMember[]
+  joinRequests OrganizationJoiningRequest[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+/** Approved members (owner is not duplicated here; use `Organization.ownerId`). */
+model OrganizationMember {
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@id([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model OrganizationJoiningRequest {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  requesterId    String  @map("requester_id") @db.Uuid
+
+  status Int @default(12)
+
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([requesterId])
+  @@index([status])
+  @@map("organization_joining_requests")
+}

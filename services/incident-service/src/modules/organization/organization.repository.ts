@@ -1,0 +1,80 @@
+import { PrismaClient } from "@prisma/client";
+import prisma from "../../config/prisma.client";
+
+export class OrganizationRepository {
+  private prisma: PrismaClient;
+
+  constructor() {
+    this.prisma = prisma;
+  }
+
+  async create(data: {
+    name: string;
+    description?: string | null;
+    ownerId: string;
+    createdBy?: string;
+  }) {
+    return this.prisma.organization.create({
+      data: {
+        name: data.name,
+        description: data.description ?? null,
+        ownerId: data.ownerId,
+        createdBy: data.createdBy ?? data.ownerId,
+      },
+    });
+  }
+
+  async findById(id: string) {
+    return this.prisma.organization.findFirst({
+      where: { id, deletedAt: null },
+    });
+  }
+
+  async findManyPaginated(
+    filters: { search?: string },
+    options: {
+      skip: number;
+      take: number;
+      sortBy: "createdAt" | "updatedAt" | "name";
+      sortOrder: "asc" | "desc";
+    },
+  ) {
+    const where = {
+      deletedAt: null as null,
+      ...(filters.search
+        ? {
+            name: {
+              contains: filters.search,
+              mode: "insensitive" as const,
+            },
+          }
+        : {}),
+    };
+    const orderBy =
+      options.sortBy === "name"
+        ? { name: options.sortOrder }
+        : options.sortBy === "updatedAt"
+          ? { updatedAt: options.sortOrder }
+          : { createdAt: options.sortOrder };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.organization.findMany({
+        where,
+        orderBy,
+        skip: options.skip,
+        take: options.take,
+      }),
+      this.prisma.organization.count({ where }),
+    ]);
+    return { rows, total };
+  }
+
+  async findOwnedByUser(ownerId: string) {
+    return this.prisma.organization.findMany({
+      where: { ownerId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+}
+
+export const organizationRepository = new OrganizationRepository();
