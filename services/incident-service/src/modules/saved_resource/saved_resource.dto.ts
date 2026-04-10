@@ -15,7 +15,7 @@ export interface SaveResourceResponse {
   deletedAt: Date | null;
 }
 
-/** OpenAPI: `data` for POST /saved-resources/save */
+/** OpenAPI: `data` for POST /incident/saved-resources/save */
 export interface SaveResourceEnvelopeData {
   savedResource: SaveResourceResponse;
 }

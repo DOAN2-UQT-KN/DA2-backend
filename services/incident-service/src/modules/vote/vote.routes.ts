@@ -5,14 +5,14 @@ import { voteController } from "./vote.controller";
 const router = Router();
 
 /**
- * @route   POST /incident/votes/upvote
+ * @route   POST /api/v1/incident/votes/upvote
  * @desc    Upvote a report or campaign; repeat to cancel (value 0). Switches from downvote to upvote.
  * @access  Private
  */
 router.post("/upvote", authenticate, voteController.upvote);
 
 /**
- * @route   POST /incident/votes/downvote
+ * @route   POST /api/v1/incident/votes/downvote
  * @desc    Downvote a report or campaign; repeat to cancel (value 0). Switches from upvote to downvote.
  * @access  Private
  */
