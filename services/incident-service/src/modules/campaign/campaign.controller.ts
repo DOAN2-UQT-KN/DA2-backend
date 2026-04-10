@@ -130,7 +130,10 @@ export class CampaignController {
           sortOrder: req.query.sortOrder as CampaignListQuery["sortOrder"],
         };
 
-        const result = await campaignService.getCampaigns(q);
+        const result = await campaignService.getCampaigns(
+          q,
+          req.user?.userId,
+        );
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {
         console.error("Get campaigns error:", error);
@@ -174,6 +177,7 @@ export class CampaignController {
       try {
         const campaigns = await campaignService.getCampaignsByIds(
           campaignParsed.ids,
+          req.user?.userId,
         );
         sendSuccess(res, HTTP_STATUS.OK, { campaigns });
       } catch (error) {
@@ -195,7 +199,10 @@ export class CampaignController {
       }
 
       try {
-        const campaign = await campaignService.getCampaignById(req.params.id);
+        const campaign = await campaignService.getCampaignById(
+          req.params.id,
+          req.user?.userId,
+        );
         if (!campaign) {
           return sendError(
             res,
@@ -310,7 +317,10 @@ export class CampaignController {
         };
 
         const result =
-          await campaignService.getCampaignsAwaitingMultiSubmissionReview(q);
+          await campaignService.getCampaignsAwaitingMultiSubmissionReview(
+            q,
+            userId,
+          );
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {
         console.error("Admin multi-submission review list error:", error);

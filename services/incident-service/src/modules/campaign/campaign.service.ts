@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
-import { GlobalStatus } from "../../constants/status.enum";
+import { GlobalStatus, VoteResourceType } from "../../constants/status.enum";
 import { HTTP_STATUS } from "../../constants/http-status";
 import { rewardServiceClient } from "../reward/reward-service.client";
 import { campaignJoiningRequestRepository } from "./campaign_joining_request/campaign_joining_request.repository";
@@ -17,6 +17,8 @@ import {
   CampaignWithReports,
   toCampaignResponse,
 } from "./campaign.entity";
+import { defaultResourceVoteSummary } from "../vote/vote.dto";
+import { voteService } from "../vote/vote.service";
 
 export class CampaignService {
   constructor() {}
@@ -31,9 +33,38 @@ export class CampaignService {
     return toCampaignResponse(entity, greenPoints);
   }
 
+  private async withCampaignVotes(
+    campaigns: CampaignResponse[],
+    viewerUserId?: string | null,
+  ): Promise<CampaignResponse[]> {
+    if (campaigns.length === 0) {
+      return campaigns;
+    }
+    const map = await voteService.getVoteSummariesForResources(
+      VoteResourceType.CAMPAIGN,
+      campaigns.map((c) => c.id),
+      viewerUserId ?? null,
+    );
+    return campaigns.map((c) => ({
+      ...c,
+      votes:
+        map.get(c.id) ?? defaultResourceVoteSummary(viewerUserId ?? null),
+    }));
+  }
+
+  private async toResponseWithVotes(
+    entity: CampaignWithReports,
+    viewerUserId?: string | null,
+  ): Promise<CampaignResponse> {
+    const base = await this.toResponse(entity);
+    const [one] = await this.withCampaignVotes([base], viewerUserId);
+    return one;
+  }
+
   async createCampaign(
     userId: string,
     request: CreateCampaignRequest,
+    viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
     const tier = await rewardServiceClient.getDifficultyByLevel(
       request.difficulty,
@@ -95,16 +126,24 @@ export class CampaignService {
       throw new Error("Failed to create campaign");
     }
 
-    return this.toResponse(created);
+    return this.toResponseWithVotes(created, viewerUserId ?? userId);
   }
 
-  async getCampaignById(id: string): Promise<CampaignResponse | null> {
+  async getCampaignById(
+    id: string,
+    viewerUserId?: string | null,
+  ): Promise<CampaignResponse | null> {
     const campaign = await campaignRepository.findById(id);
-    return campaign ? this.toResponse(campaign) : null;
+    return campaign
+      ? this.toResponseWithVotes(campaign, viewerUserId)
+      : null;
   }
 
   /** campaignIds limited to 100 UUIDs at the controller. */
-  async getCampaignsByIds(campaignIds: string[]): Promise<CampaignResponse[]> {
+  async getCampaignsByIds(
+    campaignIds: string[],
+    viewerUserId?: string | null,
+  ): Promise<CampaignResponse[]> {
     if (campaignIds.length === 0) {
       return [];
     }
@@ -114,7 +153,7 @@ export class CampaignService {
     const greenByLevel = new Map(
       difficulties.map((d) => [d.level, d.greenPoints]),
     );
-    return campaignIds
+    const list = campaignIds
       .map((id) => byId.get(id))
       .filter((row): row is CampaignWithReports => row !== undefined)
       .map((campaign) =>
@@ -123,9 +162,13 @@ export class CampaignService {
           greenByLevel.get(campaign.difficulty) ?? 0,
         ),
       );
+    return this.withCampaignVotes(list, viewerUserId);
   }
 
-  async getCampaigns(query: CampaignListQuery): Promise<{
+  async getCampaigns(
+    query: CampaignListQuery,
+    viewerUserId?: string | null,
+  ): Promise<{
     campaigns: CampaignResponse[];
     total: number;
     page: number;
@@ -156,13 +199,14 @@ export class CampaignService {
       difficulties.map((d) => [d.level, d.greenPoints]),
     );
 
-    return {
-      campaigns: rows.map((campaign) =>
-        toCampaignResponse(
-          campaign,
-          greenByLevel.get(campaign.difficulty) ?? 0,
-        ),
+    const campaigns = rows.map((campaign) =>
+      toCampaignResponse(
+        campaign,
+        greenByLevel.get(campaign.difficulty) ?? 0,
       ),
+    );
+    return {
+      campaigns: await this.withCampaignVotes(campaigns, viewerUserId),
       total,
       page,
       limit,
@@ -176,6 +220,7 @@ export class CampaignService {
    */
   async getCampaignsAwaitingMultiSubmissionReview(
     query: CampaignMultiSubmissionReviewListQuery,
+    viewerUserId?: string | null,
   ): Promise<{
     campaigns: CampaignWithAwaitingSubmissionCount[];
     total: number;
@@ -231,7 +276,7 @@ export class CampaignService {
       difficulties.map((d) => [d.level, d.greenPoints]),
     );
 
-    const campaigns: CampaignWithAwaitingSubmissionCount[] = pageIds
+    const campaignsRaw: CampaignWithAwaitingSubmissionCount[] = pageIds
       .map((id) => byId.get(id))
       .filter((row): row is NonNullable<typeof row> => row !== undefined)
       .map((entity) => {
@@ -244,6 +289,16 @@ export class CampaignService {
           awaitingSubmissionCount: countById.get(entity.id) ?? 0,
         };
       });
+
+    const campaignsWithVotes = await this.withCampaignVotes(
+      campaignsRaw,
+      viewerUserId,
+    );
+    const campaigns: CampaignWithAwaitingSubmissionCount[] =
+      campaignsWithVotes.map((c) => ({
+        ...c,
+        awaitingSubmissionCount: countById.get(c.id) ?? 0,
+      }));
 
     return {
       campaigns,
@@ -258,6 +313,7 @@ export class CampaignService {
     id: string,
     userId: string,
     request: UpdateCampaignRequest,
+    viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
     const existing = await campaignRepository.findById(id);
     if (!existing) {
@@ -351,13 +407,14 @@ export class CampaignService {
       },
     );
 
-    return this.toResponse(updated);
+    return this.toResponseWithVotes(updated, viewerUserId ?? userId);
   }
 
   /** Admin-only at controller: approve campaign (active) and mark verified. */
   async adminVerifyCampaign(
     id: string,
     adminUserId: string,
+    viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
     const existing = await campaignRepository.findById(id);
     if (!existing) {
@@ -365,7 +422,7 @@ export class CampaignService {
     }
 
     if (existing.isVerify) {
-      return this.toResponse(existing);
+      return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
     }
 
     const updated = await campaignRepository.update(id, {
@@ -373,13 +430,14 @@ export class CampaignService {
       status: GlobalStatus._STATUS_ACTIVE,
       updatedBy: adminUserId,
     });
-    return this.toResponse(updated);
+    return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
   }
 
   /** Admin-only: mark campaign completed and queue green points for approved volunteers. */
   async adminMarkCampaignDone(
     id: string,
     adminUserId: string,
+    viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
     const existing = await campaignRepository.findById(id);
     if (!existing) {
@@ -387,7 +445,7 @@ export class CampaignService {
     }
 
     if (existing.status === GlobalStatus._STATUS_COMPLETED) {
-      return this.toResponse(existing);
+      return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
     }
 
     if (existing.status !== GlobalStatus._STATUS_ACTIVE) {
@@ -456,7 +514,7 @@ export class CampaignService {
     if (!updated) {
       throw new Error("Campaign not found");
     }
-    return this.toResponse(updated);
+    return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
   }
 
   async deleteCampaign(id: string, userId: string): Promise<void> {

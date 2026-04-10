@@ -15,18 +15,51 @@ import {
   ReportBackgroundJobsStatusResponse,
 } from "./report.dto";
 import { reportMediaRepository } from "./report_media.repository";
-import { ReportStatus, MediaResourceType } from "../../constants/status.enum";
+import {
+  MediaResourceType,
+  ReportStatus,
+  VoteResourceType,
+} from "../../constants/status.enum";
 import prisma from "../../config/prisma.client";
 import { randomUUID } from "node:crypto";
 import { reportAnalysisQueueService } from "./queue/report-analysis-queue.service";
 import { backgroundJobRepository } from "../background-job/background-job.repository";
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
+import { defaultResourceVoteSummary } from "../vote/vote.dto";
+import { voteService } from "../vote/vote.service";
 
 /** Admin moderation: report is banned (same numeric value as GlobalStatus._STATUS_REJECTED). */
 const REPORT_STATUS_BANNED = ReportStatus._STATUS_REJECTED;
 
 export class ReportService {
   constructor() {}
+
+  private async attachVotesToReports<T extends ReportResponse>(
+    reports: T[],
+    viewerUserId?: string | null,
+  ): Promise<T[]> {
+    if (reports.length === 0) {
+      return reports;
+    }
+    const map = await voteService.getVoteSummariesForResources(
+      VoteResourceType.REPORT,
+      reports.map((r) => r.id),
+      viewerUserId ?? null,
+    );
+    return reports.map((r) => ({
+      ...r,
+      votes:
+        map.get(r.id) ?? defaultResourceVoteSummary(viewerUserId ?? null),
+    }));
+  }
+
+  private async withReportVote(
+    report: ReportResponse,
+    viewerUserId?: string | null,
+  ): Promise<ReportResponse> {
+    const [one] = await this.attachVotesToReports([report], viewerUserId);
+    return one;
+  }
 
   private isAdminRole(role?: string): boolean {
     return role?.toLowerCase() === "admin";
@@ -129,12 +162,22 @@ export class ReportService {
         console.error("Failed to enqueue AI analysis job:", err.message);
       });
 
-    return toReportResponse(reportAndMedia.report);
+    const [report] = await this.attachVotesToReports(
+      [toReportResponse(reportAndMedia.report)],
+      userId,
+    );
+    return report;
   }
 
-  async getReportById(id: string): Promise<ReportResponse | null> {
+  async getReportById(
+    id: string,
+    viewerUserId?: string | null,
+  ): Promise<ReportResponse | null> {
     const report = await reportRepository.findById(id);
-    return report ? toReportResponse(report) : null;
+    if (!report) {
+      return null;
+    }
+    return this.withReportVote(toReportResponse(report), viewerUserId);
   }
 
   async getReportBackgroundJobsStatus(
@@ -153,18 +196,28 @@ export class ReportService {
     };
   }
 
-  async getReportDetail(id: string): Promise<ReportDetailResponse | null> {
+  async getReportDetail(
+    id: string,
+    viewerUserId?: string | null,
+  ): Promise<ReportDetailResponse | null> {
     const report = await reportRepository.findByIdWithRelations(id);
     if (!report) return null;
 
     const [details] = await this.reportsWithMediaToDetails([
       report as ReportWithMediaFiles,
     ]);
-    return details;
+    const [withVotes] = await this.attachVotesToReports(
+      [details],
+      viewerUserId,
+    );
+    return withVotes;
   }
 
   /** reportIds limited to 100 UUIDs at the controller; order matches request. */
-  async getReportsByIds(ids: string[]): Promise<ReportDetailResponse[]> {
+  async getReportsByIds(
+    ids: string[],
+    viewerUserId?: string | null,
+  ): Promise<ReportDetailResponse[]> {
     if (ids.length === 0) {
       return [];
     }
@@ -175,7 +228,8 @@ export class ReportService {
     const ordered = ids
       .map((id) => byId.get(id))
       .filter((row): row is ReportWithMediaFiles => row !== undefined);
-    return this.reportsWithMediaToDetails(ordered);
+    const details = await this.reportsWithMediaToDetails(ordered);
+    return this.attachVotesToReports(details, viewerUserId);
   }
 
   private toReportDetailFromLoaded(
@@ -288,6 +342,7 @@ export class ReportService {
     request: UpdateReportRequest,
     userId: string,
     role?: string,
+    viewerUserId?: string | null,
   ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(id);
     if (!existing) {
@@ -306,7 +361,10 @@ export class ReportService {
       detailAddress: request.detailAddress,
     });
 
-    return toReportResponse(report);
+    return this.withReportVote(
+      toReportResponse(report),
+      viewerUserId ?? userId,
+    );
   }
 
   /**
@@ -317,6 +375,7 @@ export class ReportService {
     userId: string,
     request: AddReportImagesRequest,
     role?: string,
+    viewerUserId?: string | null,
   ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(reportId);
     if (!existing) {
@@ -379,7 +438,10 @@ export class ReportService {
       });
 
     const updated = await reportRepository.findById(reportId);
-    return toReportResponse(updated!);
+    return this.withReportVote(
+      toReportResponse(updated!),
+      viewerUserId ?? userId,
+    );
   }
 
   /**
@@ -390,6 +452,7 @@ export class ReportService {
     reportMediaFileId: string,
     userId: string,
     role?: string,
+    viewerUserId?: string | null,
   ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(reportId);
     if (!existing) {
@@ -408,63 +471,75 @@ export class ReportService {
     await reportMediaRepository.softDelete(reportMediaFileId);
 
     const updated = await reportRepository.findById(reportId);
-    return toReportResponse(updated!);
+    return this.withReportVote(
+      toReportResponse(updated!),
+      viewerUserId ?? userId,
+    );
   }
 
   /**
    * Ban a report (moderation). Admin-only; sets status to rejected/banned.
    */
-  async adminBanReport(id: string): Promise<ReportResponse> {
+  async adminBanReport(
+    id: string,
+    viewerUserId?: string | null,
+  ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(id);
     if (!existing) {
       throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
     }
 
     if (existing.status === REPORT_STATUS_BANNED) {
-      return toReportResponse(existing);
+      return this.withReportVote(toReportResponse(existing), viewerUserId);
     }
 
     const report = await reportRepository.update(id, {
       status: REPORT_STATUS_BANNED,
     });
-    return toReportResponse(report);
+    return this.withReportVote(toReportResponse(report), viewerUserId);
   }
 
   /**
    * Mark report completed (admin workflow). Admin-only at controller layer.
    */
-  async adminMarkReportDone(id: string): Promise<ReportResponse> {
+  async adminMarkReportDone(
+    id: string,
+    viewerUserId?: string | null,
+  ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(id);
     if (!existing) {
       throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
     }
 
     if (existing.status === ReportStatus._STATUS_COMPLETED) {
-      return toReportResponse(existing);
+      return this.withReportVote(toReportResponse(existing), viewerUserId);
     }
 
     const report = await reportRepository.markReportAsDone(id);
-    return toReportResponse(report);
+    return this.withReportVote(toReportResponse(report), viewerUserId);
   }
 
   /**
    * Admin approval: marks report verified and sets status active (separate from AI aiVerified).
    */
-  async adminVerifyReport(id: string): Promise<ReportResponse> {
+  async adminVerifyReport(
+    id: string,
+    viewerUserId?: string | null,
+  ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(id);
     if (!existing) {
       throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
     }
 
     if (existing.isVerify) {
-      return toReportResponse(existing);
+      return this.withReportVote(toReportResponse(existing), viewerUserId);
     }
 
     const report = await reportRepository.update(id, {
       isVerify: true,
       status: ReportStatus._STATUS_ACTIVE,
     });
-    return toReportResponse(report);
+    return this.withReportVote(toReportResponse(report), viewerUserId);
   }
 
   private async getMediaUrlMap(
@@ -507,11 +582,12 @@ export class ReportService {
     query: ReportSearchQuery,
   ): Promise<PaginatedReportsResponse> {
     const scoped: ReportSearchWithScope = { ...query, scopedUserId: userId };
-    return this.searchReports(scoped);
+    return this.searchReports(scoped, userId);
   }
 
   async searchReports(
     query: ReportSearchWithScope,
+    viewerUserId?: string | null,
   ): Promise<PaginatedReportsResponse> {
     const page = query.page || 1;
     const limit = query.limit || 10;
@@ -525,9 +601,10 @@ export class ReportService {
       );
 
       const details = await this.reportsWithMediaToDetails(reports);
+      const withVotes = await this.attachVotesToReports(details, viewerUserId);
 
       return {
-        reports: details,
+        reports: withVotes,
         total,
         page,
         limit,
@@ -538,9 +615,10 @@ export class ReportService {
     // Otherwise, use standard search
     const { reports, total } = await reportRepository.search(query);
     const details = await this.reportsWithMediaToDetails(reports);
+    const withVotes = await this.attachVotesToReports(details, viewerUserId);
 
     return {
-      reports: details,
+      reports: withVotes,
       total,
       page,
       limit,
@@ -554,6 +632,7 @@ export class ReportService {
   async updateReportStatus(
     id: string,
     status: number,
+    viewerUserId?: string | null,
   ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(id);
     if (!existing) {
@@ -561,7 +640,7 @@ export class ReportService {
     }
 
     const report = await reportRepository.update(id, { status });
-    return toReportResponse(report);
+    return this.withReportVote(toReportResponse(report), viewerUserId);
   }
 
   /**

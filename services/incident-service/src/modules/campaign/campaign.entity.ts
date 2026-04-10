@@ -1,4 +1,5 @@
 import { Campaign, CampaignManager, Report } from "@prisma/client";
+import { defaultResourceVoteSummary } from "../vote/vote.dto";
 import { CampaignResponse } from "./campaign.dto";
 
 export type CampaignEntity = Campaign;
@@ -28,5 +29,6 @@ export const toCampaignResponse = (
     updatedAt: entity.updatedAt,
     reportIds: entity.reports.map((report) => report.id),
     managerIds,
+    votes: defaultResourceVoteSummary(null),
   };
 };

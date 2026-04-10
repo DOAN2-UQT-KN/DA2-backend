@@ -149,7 +149,10 @@ export class ReportController {
       }
 
       try {
-        const reports = await reportService.getReportsByIds(parsed.ids);
+        const reports = await reportService.getReportsByIds(
+          parsed.ids,
+          req.user?.userId,
+        );
         sendSuccess(res, HTTP_STATUS.OK, { reports });
       } catch (error) {
         console.error("Get reports by ids error:", error);
@@ -163,7 +166,10 @@ export class ReportController {
    */
   getReportById = async (req: Request, res: Response): Promise<void> => {
     try {
-      const report = await reportService.getReportById(req.params.id);
+      const report = await reportService.getReportById(
+        req.params.id,
+        req.user?.userId,
+      );
 
       if (!report) {
         return sendError(res, HTTP_STATUS.REPORT_NOT_FOUND);
@@ -181,7 +187,10 @@ export class ReportController {
    */
   getReportDetail = async (req: Request, res: Response): Promise<void> => {
     try {
-      const report = await reportService.getReportDetail(req.params.id);
+      const report = await reportService.getReportDetail(
+        req.params.id,
+        req.user?.userId,
+      );
 
       if (!report) {
         return sendError(res, HTTP_STATUS.REPORT_NOT_FOUND);
@@ -395,7 +404,10 @@ export class ReportController {
           );
         }
 
-        const report = await reportService.adminBanReport(req.params.id);
+        const report = await reportService.adminBanReport(
+          req.params.id,
+          userId,
+        );
         sendSuccess(
           res,
           HTTP_STATUS.OK.withMessage("Report banned successfully"),
@@ -438,7 +450,10 @@ export class ReportController {
           );
         }
 
-        const report = await reportService.adminVerifyReport(req.params.id);
+        const report = await reportService.adminVerifyReport(
+          req.params.id,
+          userId,
+        );
         sendSuccess(
           res,
           HTTP_STATUS.OK.withMessage("Report verified successfully"),
@@ -484,7 +499,10 @@ export class ReportController {
           );
         }
 
-        const report = await reportService.adminMarkReportDone(req.params.id);
+        const report = await reportService.adminMarkReportDone(
+          req.params.id,
+          userId,
+        );
         sendSuccess(
           res,
           HTTP_STATUS.OK.withMessage("Report marked as done successfully"),
@@ -570,6 +588,7 @@ export class ReportController {
       try {
         const result = await reportService.searchReports(
           buildReportSearchQuery(req),
+          req.user?.userId,
         );
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {

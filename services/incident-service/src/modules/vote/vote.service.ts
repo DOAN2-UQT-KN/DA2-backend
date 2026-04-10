@@ -5,10 +5,53 @@ import {
 } from "../../constants/status.enum";
 import { campaignRepository } from "../campaign/campaign.repository";
 import { reportRepository } from "../report/report.repository";
-import { VoteActionBody, VoteActionResponse } from "./vote.dto";
+import {
+  VoteActionBody,
+  VoteActionResponse,
+  ResourceVoteSummary,
+} from "./vote.dto";
 import { voteRepository } from "./vote.repository";
 
 export class VoteService {
+  /**
+   * Vote totals per resource plus the viewer’s own vote (if viewerUserId is set).
+   */
+  async getVoteSummariesForResources(
+    resourceType: VoteResourceType,
+    resourceIds: string[],
+    viewerUserId?: string | null,
+  ): Promise<Map<string, ResourceVoteSummary>> {
+    const uniqueIds = [...new Set(resourceIds)];
+    const result = new Map<string, ResourceVoteSummary>();
+    if (uniqueIds.length === 0) {
+      return result;
+    }
+
+    const [countMap, myVotes] = await Promise.all([
+      voteRepository.aggregateVoteCountsByResource(resourceType, uniqueIds),
+      viewerUserId
+        ? voteRepository.findMyVoteValuesForResources(
+            viewerUserId,
+            resourceType,
+            uniqueIds,
+          )
+        : Promise.resolve(new Map<string, number>()),
+    ]);
+
+    for (const id of uniqueIds) {
+      const counts = countMap.get(id) ?? { upvoteCount: 0, downvoteCount: 0 };
+      result.set(id, {
+        upvoteCount: counts.upvoteCount,
+        downvoteCount: counts.downvoteCount,
+        myVote:
+          viewerUserId != null
+            ? (myVotes.get(id) ?? VoteValue.NONE)
+            : null,
+      });
+    }
+    return result;
+  }
+
   private async ensureVotableResource(
     resourceType: VoteResourceType,
     resourceId: string,

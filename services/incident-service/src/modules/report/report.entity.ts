@@ -1,4 +1,5 @@
 import { Report } from "@prisma/client";
+import { defaultResourceVoteSummary } from "../vote/vote.dto";
 import { ReportResponse } from "./report.dto";
 
 // Type-based entity
@@ -24,4 +25,5 @@ export const toReportResponse = (
   createdAt: entity.createdAt,
   updatedAt: entity.updatedAt,
   ...(distance !== undefined && { distance }),
+  votes: defaultResourceVoteSummary(null),
 });

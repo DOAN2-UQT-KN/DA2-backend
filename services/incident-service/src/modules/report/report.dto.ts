@@ -1,3 +1,5 @@
+import type { ResourceVoteSummary } from "../vote/vote.dto";
+
 // Request DTOs
 export interface CreateReportRequest {
   title: string;
@@ -62,6 +64,7 @@ export interface ReportResponse {
   createdAt: Date;
   updatedAt: Date;
   distance?: number; // Distance in meters (when searching with location)
+  votes: ResourceVoteSummary;
 }
 
 export interface ReportDetailResponse extends ReportResponse {

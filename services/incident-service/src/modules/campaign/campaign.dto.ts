@@ -1,4 +1,5 @@
 import { GlobalStatus } from "../../constants/status.enum";
+import type { ResourceVoteSummary } from "../vote/vote.dto";
 
 export interface CreateCampaignRequest {
   title: string;
@@ -32,6 +33,7 @@ export interface CampaignResponse {
   updatedAt: Date;
   reportIds: string[];
   managerIds: string[];
+  votes: ResourceVoteSummary;
 }
 
 export interface AddCampaignManagersRequest {
