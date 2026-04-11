@@ -34,6 +34,15 @@ const PASSWORD_RESET_TTL_MS = (() => {
   return Number.isFinite(n) && n > 0 ? n : 3_600_000;
 })();
 
+const ORG_CONTACT_EMAIL_TTL_MS = (() => {
+  const raw = process.env.ORG_CONTACT_EMAIL_TOKEN_TTL_MS;
+  if (raw == null || raw === "") {
+    return 72 * 3_600_000;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 72 * 3_600_000;
+})();
+
 export class AuthService {
   constructor() {}
 
@@ -271,6 +280,76 @@ export class AuthService {
     }
 
     await authTokenRepository.revokeAllForUser(userId, AuthTokenType.REFRESH);
+  }
+
+  /**
+   * Server-to-server: issue an opaque token for organization contact email verification (incident-service).
+   */
+  async createOrganizationContactEmailToken(params: {
+    organizationId: string;
+    contactEmail: string;
+    ownerUserId: string;
+  }): Promise<string> {
+    const owner = await userRepository.findById(params.ownerUserId);
+    if (!owner) {
+      throw new Error("Owner user not found");
+    }
+
+    const emailNorm = params.contactEmail.trim().toLowerCase();
+    await authTokenRepository.revokeActiveOrganizationContactEmail(
+      params.organizationId,
+    );
+
+    const plainToken = generateOpaqueToken();
+    const expiresAt = new Date(Date.now() + ORG_CONTACT_EMAIL_TTL_MS);
+
+    await authTokenRepository.create({
+      userId: params.ownerUserId,
+      type: AuthTokenType.ORGANIZATION_CONTACT_EMAIL,
+      tokenHash: hashOpaqueToken(plainToken),
+      expiresAt,
+      metadata: {
+        organizationId: params.organizationId,
+        contactEmail: emailNorm,
+      },
+    });
+
+    return plainToken;
+  }
+
+  /**
+   * Validates token, marks it used, returns payload. One-time use.
+   */
+  async verifyAndConsumeOrganizationContactEmailToken(
+    plainToken: string,
+  ): Promise<{ organizationId: string; contactEmail: string } | null> {
+    const trimmed = plainToken.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const stored = await authTokenRepository.findActiveByHashAndType(
+      hashOpaqueToken(trimmed),
+      AuthTokenType.ORGANIZATION_CONTACT_EMAIL,
+    );
+    if (!stored) {
+      return null;
+    }
+
+    const meta = stored.metadata as {
+      organizationId?: string;
+      contactEmail?: string;
+    } | null;
+    if (!meta?.organizationId || !meta?.contactEmail) {
+      return null;
+    }
+
+    await authTokenRepository.markUsed(stored.id);
+
+    return {
+      organizationId: meta.organizationId,
+      contactEmail: meta.contactEmail.trim().toLowerCase(),
+    };
   }
 }
 

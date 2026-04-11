@@ -1,4 +1,4 @@
-import { NotificationType } from "@prisma/client";
+import { NotificationKind, NotificationType } from "@prisma/client";
 import { prisma } from "../../../lib/prisma";
 import { fetchUserEmailById } from "../../../lib/identity-user.client";
 import { notificationTemplateEngine } from "../../templates/notification-template.engine";
@@ -20,10 +20,21 @@ class EmailNotificationChannel implements NotificationChannelStrategy {
     job: SendNotificationJobPayload,
     normalizedPayload: Record<string, string>,
   ): Promise<ChannelDeliveryResult> {
-    if (!job.userId) {
-      throw new Error("userId is required for email notifications");
+    const directTo = normalizedPayload.toEmail?.trim();
+    let toEmail: string;
+    if (directTo) {
+      if (job.kind !== NotificationKind.ORGANIZATION_CONTACT_VERIFY) {
+        throw new Error(
+          "payload.toEmail is only supported for ORGANIZATION_CONTACT_VERIFY",
+        );
+      }
+      toEmail = directTo;
+    } else {
+      if (!job.userId) {
+        throw new Error("userId is required for email notifications");
+      }
+      toEmail = await fetchUserEmailById(job.userId);
     }
-    const toEmail = await fetchUserEmailById(job.userId);
 
     const rendered = notificationTemplateEngine.renderForDelivery(
       job.kind,
@@ -40,7 +51,7 @@ class EmailNotificationChannel implements NotificationChannelStrategy {
 
     const notification = await prisma.notification.create({
       data: {
-        userId: job.userId,
+        userId: job.userId ?? null,
         type: NotificationType.EMAIL,
         kind: job.kind,
         title: rendered.title,

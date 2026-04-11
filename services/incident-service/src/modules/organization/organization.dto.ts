@@ -8,6 +8,14 @@ export interface CreateOrganizationBody {
   contactEmail: string;
 }
 
+/** Body for PUT /api/v1/organizations/:id (owner). At least one field required. */
+export interface UpdateOrganizationBody {
+  name?: string;
+  description?: string;
+  logoUrl?: string;
+  contactEmail?: string;
+}
+
 export interface OrganizationResponse {
   id: string;
   name: string;
@@ -44,6 +52,11 @@ export interface OrganizationMemberResponse {
   organizationId: string;
   userId: string;
   createdAt: Date;
+}
+
+/** Query for GET /api/v1/organizations/verify-contact-email */
+export interface OrganizationVerifyContactEmailQuery {
+  token: string;
 }
 
 /** Query for GET /api/v1/organizations (discovery). */

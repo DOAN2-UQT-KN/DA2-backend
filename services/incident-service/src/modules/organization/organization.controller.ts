@@ -6,6 +6,7 @@ import {
   validationResult,
 } from "express-validator";
 import {
+  HttpError,
   HTTP_STATUS,
   sendError,
   sendHttpErrorResponse,
@@ -18,7 +19,13 @@ import type {
   MyOrganizationJoinRequestsQuery,
   OrganizationListQuery,
   OrganizationMembersListQuery,
+  UpdateOrganizationBody,
 } from "./organization.dto";
+import {
+  redirectAfterContactEmailVerified,
+  redirectAfterContactEmailVerifyFailed,
+} from "./organization-contact-email-urls";
+import { verifyAndConsumeOrganizationContactEmailToken } from "./identity-organization-contact-email.client";
 import { organizationService } from "./organization.service";
 
 const orgIdParam = param("id").isUUID().withMessage("id must be a valid UUID");
@@ -122,6 +129,71 @@ export class OrganizationController {
     },
   ];
 
+  /**
+   * Public link from contact email: consumes identity-service auth token, then marks contact confirmed.
+   */
+  verifyOrganizationContactEmail = [
+    query("token").notEmpty().withMessage("token is required"),
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.redirect(
+          302,
+          redirectAfterContactEmailVerifyFailed("invalid_or_expired"),
+        );
+        return;
+      }
+
+      const token = String(req.query.token);
+      let organizationId: string;
+      let email: string;
+      try {
+        const payload =
+          await verifyAndConsumeOrganizationContactEmailToken(token);
+        organizationId = payload.organizationId;
+        email = payload.contactEmail;
+      } catch {
+        res.redirect(
+          302,
+          redirectAfterContactEmailVerifyFailed("invalid_or_expired"),
+        );
+        return;
+      }
+
+      try {
+        await organizationService.confirmOrganizationContactEmail(
+          organizationId,
+          email,
+        );
+        res.redirect(302, redirectAfterContactEmailVerified(organizationId));
+      } catch (e) {
+        if (HttpError.isHttpError(e)) {
+          const status = e.statusResponse.status;
+          if (status === 404) {
+            res.redirect(
+              302,
+              redirectAfterContactEmailVerifyFailed("not_found"),
+            );
+            return;
+          }
+          if (status === 400) {
+            res.redirect(
+              302,
+              redirectAfterContactEmailVerifyFailed("mismatch"),
+            );
+            return;
+          }
+        }
+        console.error("verifyOrganizationContactEmail:", e);
+        res.redirect(
+          302,
+          redirectAfterContactEmailVerifyFailed("invalid_or_expired"),
+        );
+      }
+    },
+  ];
+
   listMyOrganizations = async (
     req: Request,
     res: Response,
@@ -181,6 +253,111 @@ export class OrganizationController {
         return sendSuccess(
           res,
           HTTP_STATUS.OK.withMessage("Organization approved successfully"),
+          { organization },
+        );
+      } catch (error) {
+        if (sendHttpErrorResponse(res, error)) {
+          return;
+        }
+        throw error;
+      }
+    },
+  ];
+
+  updateOrganization = [
+    orgIdParam,
+    body("name")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 200 })
+      .withMessage("name must be 1–200 characters when provided"),
+    body("description")
+      .optional()
+      .trim()
+      .isLength({ max: 5000 })
+      .withMessage("description too long"),
+    body("logoUrl")
+      .optional()
+      .trim()
+      .isLength({ max: 2048 })
+      .isURL({ require_tld: false })
+      .withMessage("logo_url must be a valid URL (max 2048 characters)"),
+    body("contactEmail")
+      .optional()
+      .trim()
+      .isLength({ max: 320 })
+      .isEmail()
+      .withMessage("contact_email must be a valid email"),
+    body().custom((_value, { req }) => {
+      const b = req.body as Record<string, unknown>;
+      const has =
+        b.name !== undefined ||
+        b.description !== undefined ||
+        b.logoUrl !== undefined ||
+        b.contactEmail !== undefined;
+      if (!has) {
+        throw new Error(
+          "At least one of name, description, logo_url, contact_email is required",
+        );
+      }
+      return true;
+    }),
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      const userId = req.user?.userId;
+      if (!userId) {
+        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+      }
+
+      try {
+        const body = req.body as UpdateOrganizationBody;
+        const organization = await organizationService.updateOrganization(
+          req.params.id,
+          userId,
+          body,
+        );
+        return sendSuccess(res, HTTP_STATUS.OK, { organization });
+      } catch (error) {
+        if (sendHttpErrorResponse(res, error)) {
+          return;
+        }
+        throw error;
+      }
+    },
+  ];
+
+  resendOrganizationContactEmail = [
+    orgIdParam,
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      const userId = req.user?.userId;
+      if (!userId) {
+        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+      }
+
+      try {
+        const organization =
+          await organizationService.resendOrganizationContactVerificationEmail(
+            req.params.id,
+            userId,
+          );
+        return sendSuccess(
+          res,
+          HTTP_STATUS.OK.withMessage("Verification email sent"),
           { organization },
         );
       } catch (error) {

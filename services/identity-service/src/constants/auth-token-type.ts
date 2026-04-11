@@ -2,6 +2,8 @@
 export const AuthTokenType = {
   REFRESH: "REFRESH",
   PASSWORD_RESET: "PASSWORD_RESET",
+  /** Incident-service: verify organization `contactEmail` (metadata: organizationId, contactEmail). */
+  ORGANIZATION_CONTACT_EMAIL: "ORGANIZATION_CONTACT_EMAIL",
 } as const;
 
 export type AuthTokenTypeValue =

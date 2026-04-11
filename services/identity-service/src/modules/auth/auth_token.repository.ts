@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
+import { AuthTokenType } from "../../constants/auth-token-type";
 import type { AuthTokenTypeValue } from "../../constants/auth-token-type";
 
 const now = (): Date => new Date();
@@ -58,6 +59,22 @@ export class AuthTokenRepository {
       where: { id },
       data: { usedAt: now() },
     });
+  }
+
+  /** Revoke pending org contact-email tokens for one organization (before issuing a new link). */
+  async revokeActiveOrganizationContactEmail(
+    organizationId: string,
+  ): Promise<void> {
+    const t = now();
+    await prisma.$executeRaw`
+      UPDATE auth_tokens
+      SET revoked_at = ${t}
+      WHERE type = ${AuthTokenType.ORGANIZATION_CONTACT_EMAIL}
+        AND revoked_at IS NULL
+        AND used_at IS NULL
+        AND expires_at > ${t}
+        AND metadata->>'organizationId' = ${organizationId}
+    `;
   }
 }
 

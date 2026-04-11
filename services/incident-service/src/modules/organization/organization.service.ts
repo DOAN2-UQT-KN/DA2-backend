@@ -17,7 +17,11 @@ import type {
   OrganizationMemberResponse,
   OrganizationMembersListQuery,
   OrganizationResponse,
+  UpdateOrganizationBody,
 } from "./organization.dto";
+import { issueOrganizationContactEmailToken } from "./identity-organization-contact-email.client";
+import { enqueueOrganizationContactVerificationEmail } from "./organization-contact-email-notify.client";
+import { buildVerifyContactEmailRequestUrl } from "./organization-contact-email-urls";
 import { organizationJoiningRequestRepository } from "./organization_joining_request.repository";
 import { organizationMemberRepository } from "./organization_member.repository";
 import { organizationRepository } from "./organization.repository";
@@ -96,7 +100,69 @@ export class OrganizationService {
       ownerId,
       createdBy: ownerId,
     });
+
+    if (created.contactEmail) {
+      void this.queueOrganizationContactVerificationEmail(
+        created.id,
+        created.name,
+        created.contactEmail,
+        ownerId,
+      ).catch((err) => {
+        console.error(
+          "[OrganizationService] Failed to queue contact verification email:",
+          err,
+        );
+      });
+    }
+
     return this.toOrganizationResponse(created);
+  }
+
+  private async queueOrganizationContactVerificationEmail(
+    organizationId: string,
+    organizationName: string,
+    contactEmail: string,
+    ownerUserId: string,
+  ): Promise<void> {
+    const token = await issueOrganizationContactEmailToken({
+      organizationId,
+      contactEmail,
+      ownerUserId,
+    });
+    const verifyUrl = buildVerifyContactEmailRequestUrl(token);
+    await enqueueOrganizationContactVerificationEmail({
+      toEmail: contactEmail,
+      organizationName,
+      verifyUrl,
+    });
+  }
+
+  /**
+   * Confirms `contactEmail` after identity-service has validated and consumed the opaque token.
+   */
+  async confirmOrganizationContactEmail(
+    organizationId: string,
+    email: string,
+  ): Promise<void> {
+    const org = await organizationRepository.findById(organizationId);
+    if (!org) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+    const normalized = org.contactEmail?.toLowerCase() ?? "";
+    if (!normalized || normalized !== email.toLowerCase()) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage("Contact email does not match"),
+      );
+    }
+    if (org.isEmailVerified) {
+      return;
+    }
+    await organizationRepository.update(organizationId, {
+      isEmailVerified: true,
+      updatedBy: org.ownerId,
+    });
   }
 
   /** Admin-only at controller: approve organization (`status` → active). */
@@ -120,6 +186,126 @@ export class OrganizationService {
       updatedBy: adminUserId,
     });
     return this.toOrganizationResponse(updated);
+  }
+
+  /** Owner-only: partial update; changing `contactEmail` resets verification and queues a new email. */
+  async updateOrganization(
+    organizationId: string,
+    ownerId: string,
+    body: UpdateOrganizationBody,
+  ): Promise<OrganizationResponse> {
+    const org = await organizationRepository.findById(organizationId);
+    if (!org) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+    if (org.ownerId !== ownerId) {
+      throw new HttpError(
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Only the organization owner can update this organization",
+        ),
+      );
+    }
+
+    const prevEmailNorm = org.contactEmail?.toLowerCase().trim() ?? "";
+    const patch: Parameters<typeof organizationRepository.update>[1] = {
+      updatedBy: ownerId,
+    };
+
+    if (body.name !== undefined) {
+      patch.name = body.name.trim();
+    }
+    if (body.description !== undefined) {
+      patch.description = body.description?.trim() || null;
+    }
+    if (body.logoUrl !== undefined) {
+      patch.logoUrl = body.logoUrl.trim();
+    }
+
+    let contactEmailChanged = false;
+    if (body.contactEmail !== undefined) {
+      const next = body.contactEmail.trim().toLowerCase();
+      patch.contactEmail = next;
+      if (next !== prevEmailNorm) {
+        contactEmailChanged = true;
+        patch.isEmailVerified = false;
+      }
+    }
+
+    const updated = await organizationRepository.update(organizationId, patch);
+
+    if (contactEmailChanged && updated.contactEmail) {
+      void this.queueOrganizationContactVerificationEmail(
+        updated.id,
+        updated.name,
+        updated.contactEmail,
+        ownerId,
+      ).catch((err) => {
+        console.error(
+          "[OrganizationService] Failed to queue contact verification email after update:",
+          err,
+        );
+      });
+    }
+
+    return this.toOrganizationResponse(updated);
+  }
+
+  /** Owner-only: resend contact verification when email is not yet verified. */
+  async resendOrganizationContactVerificationEmail(
+    organizationId: string,
+    ownerId: string,
+  ): Promise<OrganizationResponse> {
+    const org = await organizationRepository.findById(organizationId);
+    if (!org) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+    if (org.ownerId !== ownerId) {
+      throw new HttpError(
+        HTTP_STATUS.FORBIDDEN.withMessage(
+          "Only the organization owner can resend the verification email",
+        ),
+      );
+    }
+    const email = org.contactEmail?.trim();
+    if (!email) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage(
+          "Organization has no contact email to verify",
+        ),
+      );
+    }
+    if (org.isEmailVerified) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage(
+          "Contact email is already verified",
+        ),
+      );
+    }
+
+    try {
+      await this.queueOrganizationContactVerificationEmail(
+        org.id,
+        org.name,
+        email.toLowerCase(),
+        ownerId,
+      );
+    } catch (err) {
+      console.error(
+        "[OrganizationService] Resend contact verification email failed:",
+        err,
+      );
+      throw new HttpError(
+        HTTP_STATUS.BAD_GATEWAY.withMessage(
+          "Failed to send verification email; try again later",
+        ),
+      );
+    }
+
+    return this.toOrganizationResponse(org);
   }
 
   async getById(organizationId: string): Promise<OrganizationResponse | null> {

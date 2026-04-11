@@ -12,6 +12,17 @@ const router = Router();
 router.post("/", authenticate, organizationController.createOrganization);
 
 /**
+ * @route   GET /api/v1/organizations/verify-contact-email
+ * @desc    Confirm organization contact email (link from email); redirects to frontend.
+ * @access  Public
+ * @query   token — signed JWT from incident-service
+ */
+router.get(
+  "/verify-contact-email",
+  organizationController.verifyOrganizationContactEmail,
+);
+
+/**
  * @route   GET /api/v1/organizations/join-requests/my
  * @desc    Join requests I submitted (with organization summary).
  * @access  Private
@@ -73,6 +84,28 @@ router.put(
   "/:id/verify",
   authenticate,
   organizationController.adminVerifyOrganization,
+);
+
+/**
+ * @route   PUT /api/v1/organizations/:id
+ * @desc    Update organization (owner). Changing contact_email resets verification and sends a new link.
+ * @access  Private (owner)
+ */
+router.put(
+  "/:id",
+  authenticate,
+  organizationController.updateOrganization,
+);
+
+/**
+ * @route   POST /api/v1/organizations/:id/resend-contact-email
+ * @desc    Resend contact verification email (owner; only while contact email is not verified).
+ * @access  Private (owner)
+ */
+router.post(
+  "/:id/resend-contact-email",
+  authenticate,
+  organizationController.resendOrganizationContactEmail,
 );
 
 /**

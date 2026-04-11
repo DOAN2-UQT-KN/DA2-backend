@@ -181,10 +181,21 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
   "GET /api/v1/organizations/owned": {
     responseData: "MyOrganizationsEnvelopeData",
   },
+  "GET /api/v1/organizations/verify-contact-email": {
+    query: "OrganizationVerifyContactEmailQuery",
+    omitData: true,
+  },
   "GET /api/v1/organizations/:id": {
     responseData: "OrganizationOneEnvelopeData",
   },
   "PUT /api/v1/organizations/:id/verify": {
+    responseData: "OrganizationOneEnvelopeData",
+  },
+  "PUT /api/v1/organizations/:id": {
+    requestBody: "UpdateOrganizationBody",
+    responseData: "OrganizationOneEnvelopeData",
+  },
+  "POST /api/v1/organizations/:id/resend-contact-email": {
     responseData: "OrganizationOneEnvelopeData",
   },
   "POST /api/v1/organizations/:id/join-requests": {

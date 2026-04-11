@@ -31,6 +31,10 @@ export class OrganizationRepository {
   async update(
     id: string,
     data: {
+      name?: string;
+      description?: string | null;
+      logoUrl?: string;
+      contactEmail?: string | null;
       status?: number;
       isEmailVerified?: boolean;
       updatedBy?: string | null;
@@ -39,6 +43,12 @@ export class OrganizationRepository {
     return this.prisma.organization.update({
       where: { id },
       data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
+        ...(data.contactEmail !== undefined && {
+          contactEmail: data.contactEmail,
+        }),
         ...(data.status !== undefined && { status: data.status }),
         ...(data.isEmailVerified !== undefined && {
           isEmailVerified: data.isEmailVerified,

@@ -77,14 +77,29 @@ export const notificationController = {
         return;
       }
 
-      if (jobPayload.type === "email" && !jobPayload.userId) {
-        sendError(
-          res,
-          HTTP_STATUS.BAD_REQUEST.withMessage(
-            "userId is required for email notifications",
-          ),
-        );
-        return;
+      if (jobPayload.type === "email") {
+        const p = jobPayload.payload ?? {};
+        const directTo =
+          typeof p.toEmail === "string" ? p.toEmail.trim() : "";
+        if (jobPayload.kind === NotificationKind.ORGANIZATION_CONTACT_VERIFY) {
+          if (!directTo) {
+            sendError(
+              res,
+              HTTP_STATUS.BAD_REQUEST.withMessage(
+                "payload.toEmail is required for ORGANIZATION_CONTACT_VERIFY",
+              ),
+            );
+            return;
+          }
+        } else if (!jobPayload.userId) {
+          sendError(
+            res,
+            HTTP_STATUS.BAD_REQUEST.withMessage(
+              "userId is required for email notifications",
+            ),
+          );
+          return;
+        }
       }
 
       const jobId = await enqueueSendNotification(jobPayload);
