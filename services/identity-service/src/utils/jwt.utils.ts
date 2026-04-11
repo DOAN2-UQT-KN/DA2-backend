@@ -56,3 +56,12 @@ export const decodeToken = (token: string): TokenPayload | null => {
         return null;
     }
 };
+
+/** Expiry from a signed JWT (`exp` claim), or null if missing. */
+export const getJwtExpiresAt = (token: string): Date | null => {
+    const decoded = jwt.decode(token) as { exp?: number } | null;
+    if (decoded?.exp == null || typeof decoded.exp !== "number") {
+        return null;
+    }
+    return new Date(decoded.exp * 1000);
+};

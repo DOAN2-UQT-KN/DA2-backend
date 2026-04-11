@@ -27,10 +27,35 @@ model User {
   updatedAt DateTime  @updatedAt @default(now())
   deletedAt DateTime?
 
+  authTokens AuthToken[]
+
   @@index([email])
   @@index([roleId])
   @@index([deletedAt])
   @@map("users")
+}
+
+// Hashed token only (never store plain). type: REFRESH, PASSWORD_RESET (see AuthTokenType).
+model AuthToken {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String @map("user_id") @db.Uuid
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      String   @db.VarChar(32)
+  tokenHash String   @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime @map("expires_at")
+
+  revokedAt DateTime? @map("revoked_at")
+  usedAt    DateTime? @map("used_at")
+  metadata  Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tokenHash])
+  @@index([userId, type])
+  @@index([expiresAt])
+  @@map("auth_tokens")
 }
 
 model Role {

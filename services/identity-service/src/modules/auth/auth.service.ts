@@ -1,7 +1,17 @@
 import bcrypt from "bcryptjs";
+import { AuthTokenType } from "../../constants/auth-token-type";
+import {
+  generateOpaqueToken,
+  hashOpaqueToken,
+} from "../../utils/token-hash";
+import {
+  generateTokens,
+  getJwtExpiresAt,
+  verifyToken,
+} from "../../utils/jwt.utils";
 import { userRepository } from "../user/user.repository";
 import { roleRepository } from "../role/role.repository";
-import { generateTokens, verifyToken } from "../../utils/jwt.utils";
+import { authTokenRepository } from "./auth_token.repository";
 import {
   SignupRequest,
   SignupResponse,
@@ -14,6 +24,15 @@ import {
   RequestPasswordResetRequest,
   ResetPasswordRequest,
 } from "./auth.dto";
+
+const PASSWORD_RESET_TTL_MS = (() => {
+  const raw = process.env.PASSWORD_RESET_TTL_MS;
+  if (raw == null || raw === "") {
+    return 3_600_000;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 3_600_000;
+})();
 
 export class AuthService {
   constructor() {}
@@ -80,7 +99,15 @@ export class AuthService {
       role: user.roleId,
     });
 
-    // TODO: Store refreshToken in Redis instead of DB
+    const refreshExpiresAt = getJwtExpiresAt(tokens.refreshToken);
+    if (refreshExpiresAt) {
+      await authTokenRepository.create({
+        userId: user.id,
+        type: AuthTokenType.REFRESH,
+        tokenHash: hashOpaqueToken(tokens.refreshToken),
+        expiresAt: refreshExpiresAt,
+      });
+    }
 
     return {
       user: {
@@ -103,20 +130,36 @@ export class AuthService {
       const refreshToken = refreshTokenRequest.refreshToken;
       const decoded = verifyToken(refreshToken);
 
+      const stored = await authTokenRepository.findActiveByHashAndType(
+        hashOpaqueToken(refreshToken),
+        AuthTokenType.REFRESH,
+      );
+      if (!stored || stored.userId !== decoded.userId) {
+        return null;
+      }
+
       const user = await userRepository.findById(decoded.userId);
       if (!user) {
         return null;
       }
 
-      // TODO: Validate refreshToken against Redis
+      await authTokenRepository.revokeById(stored.id);
 
       const tokens = generateTokens({
         userId: user.id,
         email: user.email,
         role: user.roleId,
       });
-      
-      // TODO: Store new refreshToken in Redis, invalidate old one
+
+      const refreshExpiresAt = getJwtExpiresAt(tokens.refreshToken);
+      if (refreshExpiresAt) {
+        await authTokenRepository.create({
+          userId: user.id,
+          type: AuthTokenType.REFRESH,
+          tokenHash: hashOpaqueToken(tokens.refreshToken),
+          expiresAt: refreshExpiresAt,
+        });
+      }
 
       return {
         accessToken: tokens.accessToken,
@@ -148,6 +191,8 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(request.newPassword, 10);
     await userRepository.update(user.id, { password: hashedPassword });
 
+    await authTokenRepository.revokeAllForUser(user.id, AuthTokenType.REFRESH);
+
     return true;
   }
 
@@ -159,25 +204,45 @@ export class AuthService {
       return null;
     }
 
-    const resetToken =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
+    await authTokenRepository.revokeAllForUser(
+      user.id,
+      AuthTokenType.PASSWORD_RESET,
+    );
 
-    // TODO: Store resetToken in Redis with 1 hour TTL
-    // await redisClient.set(`reset:${resetToken}`, user.id, 'EX', 3600);
+    const plainToken = generateOpaqueToken();
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
 
-    return resetToken;
+    await authTokenRepository.create({
+      userId: user.id,
+      type: AuthTokenType.PASSWORD_RESET,
+      tokenHash: hashOpaqueToken(plainToken),
+      expiresAt,
+    });
+
+    return plainToken;
   }
 
-  async resetPassword(_request: ResetPasswordRequest): Promise<boolean> {
-    // TODO: Look up resetToken in Redis to get userId
-    // const userId = await redisClient.get(`reset:${request.resetToken}`);
-    // if (!userId) return false;
-    // const user = await userRepository.findById(userId);
+  async resetPassword(request: ResetPasswordRequest): Promise<boolean> {
+    const stored = await authTokenRepository.findActiveByHashAndType(
+      hashOpaqueToken(request.resetToken),
+      AuthTokenType.PASSWORD_RESET,
+    );
+    if (!stored) {
+      return false;
+    }
 
-    // Placeholder until Redis is set up — this won't work without Redis
-    console.warn("resetPassword requires Redis implementation");
-    return false;
+    const user = await userRepository.findById(stored.userId);
+    if (!user) {
+      return false;
+    }
+
+    const hashedPassword = await bcrypt.hash(request.newPassword, 10);
+    await userRepository.update(user.id, { password: hashedPassword });
+
+    await authTokenRepository.markUsed(stored.id);
+    await authTokenRepository.revokeAllForUser(user.id, AuthTokenType.REFRESH);
+
+    return true;
   }
 
   async getMe(userId: string): Promise<CurrentUserResponse | null> {
@@ -200,13 +265,12 @@ export class AuthService {
   }
 
   async logout(userId: string): Promise<void> {
-    // TODO: Invalidate refreshToken in Redis
-    // await redisClient.del(`refresh:${userId}`);
-
     const user = await userRepository.findById(userId);
     if (!user) {
       return;
     }
+
+    await authTokenRepository.revokeAllForUser(userId, AuthTokenType.REFRESH);
   }
 }
 
