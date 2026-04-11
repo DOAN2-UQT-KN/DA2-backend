@@ -65,12 +65,23 @@ router.get(
 router.get("/", authenticate, organizationController.listOrganizations);
 
 /**
+ * @route   PUT /api/v1/organizations/:id/verify
+ * @desc    Admin-approve an organization (status → active).
+ * @access  Private (admin)
+ */
+router.put(
+  "/:id/verify",
+  authenticate,
+  organizationController.adminVerifyOrganization,
+);
+
+/**
  * @route   GET /api/v1/organizations/:id
  * @desc    Organization by id.
  * @access  Private
  */
 router.get("/:id", authenticate, organizationController.getOrganizationById);
-
+ 
 /**
  * @route   POST /api/v1/organizations/:id/join-requests
  * @desc    Request to join an organization.

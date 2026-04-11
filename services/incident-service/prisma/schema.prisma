@@ -409,6 +409,15 @@ model Organization {
   name        String  @db.VarChar(200)
   description String?
 
+  /** Public logo image URL (required on create). */
+  logoUrl String @map("logo_url") @db.VarChar(2048)
+  contactEmail String? @map("contact_email") @db.VarChar(320)
+
+  /** Whether `contactEmail` has been confirmed (e.g. OTP); not set by create body. */
+  isEmailVerified Boolean @default(false) @map("is_email_verified")
+  /** Lifecycle (e.g. `GlobalStatus._STATUS_INREVIEW` until an admin approves). */
+  status Int @default(9)
+
   ownerId String @map("owner_id") @db.Uuid
 
   createdBy String? @map("created_by") @db.Uuid

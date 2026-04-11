@@ -11,6 +11,8 @@ export class OrganizationRepository {
   async create(data: {
     name: string;
     description?: string | null;
+    logoUrl: string;
+    contactEmail?: string | null;
     ownerId: string;
     createdBy?: string;
   }) {
@@ -18,8 +20,30 @@ export class OrganizationRepository {
       data: {
         name: data.name,
         description: data.description ?? null,
+        logoUrl: data.logoUrl,
+        contactEmail: data.contactEmail ?? null,
         ownerId: data.ownerId,
         createdBy: data.createdBy ?? data.ownerId,
+      },
+    });
+  }
+
+  async update(
+    id: string,
+    data: {
+      status?: number;
+      isEmailVerified?: boolean;
+      updatedBy?: string | null;
+    },
+  ) {
+    return this.prisma.organization.update({
+      where: { id },
+      data: {
+        ...(data.status !== undefined && { status: data.status }),
+        ...(data.isEmailVerified !== undefined && {
+          isEmailVerified: data.isEmailVerified,
+        }),
+        ...(data.updatedBy !== undefined && { updatedBy: data.updatedBy }),
       },
     });
   }

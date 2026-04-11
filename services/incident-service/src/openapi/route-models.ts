@@ -184,6 +184,9 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
   "GET /api/v1/organizations/:id": {
     responseData: "OrganizationOneEnvelopeData",
   },
+  "PUT /api/v1/organizations/:id/verify": {
+    responseData: "OrganizationOneEnvelopeData",
+  },
   "POST /api/v1/organizations/:id/join-requests": {
     responseData: "OrganizationJoinRequestOneEnvelopeData",
   },

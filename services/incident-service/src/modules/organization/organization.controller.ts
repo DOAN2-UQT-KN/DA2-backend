@@ -35,6 +35,18 @@ export class OrganizationController {
       .trim()
       .isLength({ max: 5000 })
       .withMessage("description too long"),
+    body("logoUrl")
+      .notEmpty()
+      .trim()
+      .isLength({ max: 2048 })
+      .isURL({ require_tld: false })
+      .withMessage("logo_url must be a non-empty valid URL (max 2048 characters)"),
+    body("contactEmail")
+      .notEmpty()
+      .trim()
+      .isLength({ max: 320 })
+      .isEmail()
+      .withMessage("contact_email is required and must be a valid email"),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -130,6 +142,55 @@ export class OrganizationController {
       throw error;
     }
   };
+
+  /**
+   * Approve an organization (admin only). Sets status to active (`GlobalStatus._STATUS_ACTIVE`).
+   */
+  adminVerifyOrganization = [
+    orgIdParam,
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      const userId = req.user?.userId;
+      if (!userId) {
+        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+      }
+
+      const role = req.user?.role;
+      const normalizedRole = role?.toLowerCase();
+      if (!normalizedRole || normalizedRole !== "admin") {
+        return sendError(
+          res,
+          HTTP_STATUS.FORBIDDEN.withMessage(
+            "Only admin can verify an organization",
+          ),
+        );
+      }
+
+      try {
+        const organization = await organizationService.adminVerifyOrganization(
+          req.params.id,
+          userId,
+        );
+        return sendSuccess(
+          res,
+          HTTP_STATUS.OK.withMessage("Organization approved successfully"),
+          { organization },
+        );
+      } catch (error) {
+        if (sendHttpErrorResponse(res, error)) {
+          return;
+        }
+        throw error;
+      }
+    },
+  ];
 
   getOrganizationById = [
     orgIdParam,

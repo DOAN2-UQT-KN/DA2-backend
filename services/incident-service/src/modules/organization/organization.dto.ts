@@ -1,13 +1,22 @@
-/** Body for POST /api/v1/organizations */
+/** Body for POST /api/v1/organizations (JSON keys may be snake_case; middleware normalizes to camelCase). */
 export interface CreateOrganizationBody {
   name: string;
   description?: string;
+  /** Required; clients send `logo_url`. */
+  logoUrl: string;
+  /** Required; clients send `contact_email`. */
+  contactEmail: string;
 }
 
 export interface OrganizationResponse {
   id: string;
   name: string;
   description: string | null;
+  logoUrl: string;
+  contactEmail: string | null;
+  isEmailVerified: boolean;
+  /** `GlobalStatus` numeric value (e.g. in-review until admin approves via verify endpoint). */
+  status: number;
   ownerId: string;
   createdAt: Date;
   updatedAt: Date;

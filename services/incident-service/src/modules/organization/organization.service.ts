@@ -27,6 +27,10 @@ export class OrganizationService {
     id: string;
     name: string;
     description: string | null;
+    logoUrl: string;
+    contactEmail: string | null;
+    isEmailVerified: boolean;
+    status: number;
     ownerId: string;
     createdAt: Date;
     updatedAt: Date;
@@ -35,6 +39,10 @@ export class OrganizationService {
       id: row.id,
       name: row.name,
       description: row.description,
+      logoUrl: row.logoUrl,
+      contactEmail: row.contactEmail,
+      isEmailVerified: row.isEmailVerified,
+      status: row.status,
       ownerId: row.ownerId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -83,10 +91,35 @@ export class OrganizationService {
     const created = await organizationRepository.create({
       name: body.name.trim(),
       description: body.description?.trim() || null,
+      logoUrl: body.logoUrl.trim(),
+      contactEmail: body.contactEmail.trim().toLowerCase(),
       ownerId,
       createdBy: ownerId,
     });
     return this.toOrganizationResponse(created);
+  }
+
+  /** Admin-only at controller: approve organization (`status` → active). */
+  async adminVerifyOrganization(
+    organizationId: string,
+    adminUserId: string,
+  ): Promise<OrganizationResponse> {
+    const existing = await organizationRepository.findById(organizationId);
+    if (!existing) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+      );
+    }
+
+    if (existing.status === GlobalStatus._STATUS_ACTIVE) {
+      return this.toOrganizationResponse(existing);
+    }
+
+    const updated = await organizationRepository.update(organizationId, {
+      status: GlobalStatus._STATUS_ACTIVE,
+      updatedBy: adminUserId,
+    });
+    return this.toOrganizationResponse(updated);
   }
 
   async getById(organizationId: string): Promise<OrganizationResponse | null> {
