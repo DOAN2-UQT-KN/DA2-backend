@@ -318,10 +318,48 @@ export class OrganizationService {
     return this.toOrganizationResponse(org);
   }
 
-  async getById(organizationId: string): Promise<OrganizationResponse | null> {
+  /**
+   * Maps latest join-request row to API `request_status` (same numeric `JoinRequestStatus` /
+   * `GlobalStatus` as stored on the request). Omitted when there is no row, the latest is
+   * rejected, or the status is otherwise not exposed.
+   */
+  private joinRequestStatusForOrganizationDetail(
+    joinRequestStatus: number | undefined,
+  ): number | undefined {
+    if (joinRequestStatus === undefined) return undefined;
+    if (joinRequestStatus === JoinRequestStatus._STATUS_REJECTED) {
+      return undefined;
+    }
+    if (
+      joinRequestStatus === JoinRequestStatus._STATUS_PENDING ||
+      joinRequestStatus === JoinRequestStatus._STATUS_APPROVED
+    ) {
+      return joinRequestStatus;
+    }
+    return undefined;
+  }
+
+  async getById(
+    organizationId: string,
+    viewerUserId?: string,
+  ): Promise<OrganizationResponse | null> {
     const row = await organizationRepository.findById(organizationId);
     if (!row) return null;
-    return this.toOrganizationResponse(row);
+    const organization = this.toOrganizationResponse(row);
+    if (!viewerUserId) {
+      return organization;
+    }
+    const latestJoin =
+      await organizationJoiningRequestRepository.findLatestByOrganizationAndRequester(
+        organizationId,
+        viewerUserId,
+      );
+    const requestStatus = this.joinRequestStatusForOrganizationDetail(
+      latestJoin?.status,
+    );
+    return requestStatus !== undefined
+      ? { ...organization, requestStatus }
+      : organization;
   }
 
   async listMyOrganizations(

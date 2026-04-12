@@ -33,6 +33,12 @@ export interface OrganizationResponse {
   ownerId: string;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Present on GET /organizations/:id for the current user when their latest non-deleted join
+   * request is pending (`JoinRequestStatus._STATUS_PENDING`, processing) or approved
+   * (`JoinRequestStatus._STATUS_APPROVED`). Omitted if there is no request or the latest is rejected.
+   */
+  requestStatus?: number;
 }
 
 export interface OrganizationJoinRequestResponse {

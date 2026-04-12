@@ -53,6 +53,21 @@ export class OrganizationJoiningRequestRepository {
     });
   }
 
+  /** Most recent join request for this org and user (e.g. for `request_status` on org detail). */
+  async findLatestByOrganizationAndRequester(
+    organizationId: string,
+    requesterId: string,
+  ) {
+    return this.prisma.organizationJoiningRequest.findFirst({
+      where: {
+        organizationId,
+        requesterId,
+        deletedAt: null,
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+  }
+
   async findByOrganizationPaginated(
     organizationId: string,
     filters: { status?: number; requesterId?: string },

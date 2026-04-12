@@ -453,7 +453,10 @@ export class OrganizationController {
       }
 
       try {
-        const organization = await organizationService.getById(req.params.id);
+        const organization = await organizationService.getById(
+          req.params.id,
+          req.user.userId,
+        );
         if (!organization) {
           return sendError(res, HTTP_STATUS.NOT_FOUND);
         }
