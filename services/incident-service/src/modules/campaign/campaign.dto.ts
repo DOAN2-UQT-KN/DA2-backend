@@ -41,6 +41,12 @@ export interface CampaignResponse {
    * Whether the current user saved this campaign. Null when the viewer is unknown (unauthenticated).
    */
   saved: boolean | null;
+  /**
+   * Present on GET /campaigns/:id for the current user when their latest non-deleted campaign join
+   * request is pending (`JoinRequestStatus._STATUS_PENDING`) or approved
+   * (`JoinRequestStatus._STATUS_APPROVED`). Omitted if there is no request or the latest is rejected.
+   */
+  requestStatus?: number;
 }
 
 export interface AddCampaignManagersRequest {

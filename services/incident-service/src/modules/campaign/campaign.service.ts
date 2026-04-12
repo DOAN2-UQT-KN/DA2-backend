@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
 import {
   GlobalStatus,
+  JoinRequestStatus,
   SavedResourceType,
   VoteResourceType,
 } from "../../constants/status.enum";
@@ -76,6 +77,22 @@ export class CampaignService {
     const base = await this.toResponse(entity);
     const [one] = await this.withCampaignVotes([base], viewerUserId);
     return one;
+  }
+
+  private joinRequestStatusForCampaignDetail(
+    joinRequestStatus: number | undefined,
+  ): number | undefined {
+    if (joinRequestStatus === undefined) return undefined;
+    if (joinRequestStatus === JoinRequestStatus._STATUS_REJECTED) {
+      return undefined;
+    }
+    if (
+      joinRequestStatus === JoinRequestStatus._STATUS_PENDING ||
+      joinRequestStatus === JoinRequestStatus._STATUS_APPROVED
+    ) {
+      return joinRequestStatus;
+    }
+    return undefined;
   }
 
   async createCampaign(
@@ -166,9 +183,22 @@ export class CampaignService {
     viewerUserId?: string | null,
   ): Promise<CampaignResponse | null> {
     const campaign = await campaignRepository.findById(id);
-    return campaign
-      ? this.toResponseWithVotes(campaign, viewerUserId)
-      : null;
+    if (!campaign) return null;
+    const base = await this.toResponseWithVotes(campaign, viewerUserId);
+    if (!viewerUserId) {
+      return base;
+    }
+    const latestJoin =
+      await campaignJoiningRequestRepository.findLatestByCampaignAndVolunteer(
+        id,
+        viewerUserId,
+      );
+    const requestStatus = this.joinRequestStatusForCampaignDetail(
+      latestJoin?.status,
+    );
+    return requestStatus !== undefined
+      ? { ...base, requestStatus }
+      : base;
   }
 
   /** campaignIds limited to 100 UUIDs at the controller. */

@@ -47,6 +47,21 @@ export class CampaignJoiningRequestRepository {
         });
     }
 
+    /** Most recent join request for this campaign and volunteer (e.g. `request_status` on campaign detail). */
+    async findLatestByCampaignAndVolunteer(
+        campaignId: string,
+        volunteerId: string,
+    ) {
+        return this.prisma.campaignJoiningRequest.findFirst({
+            where: {
+                campaignId,
+                volunteerId,
+                deletedAt: null,
+            },
+            orderBy: { updatedAt: "desc" },
+        });
+    }
+
     async findByCampaignId(campaignId: string) {
         return this.prisma.campaignJoiningRequest.findMany({
             where: { campaignId, deletedAt: null },
