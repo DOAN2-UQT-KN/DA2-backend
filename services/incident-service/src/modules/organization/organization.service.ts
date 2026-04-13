@@ -364,14 +364,14 @@ export class OrganizationService {
 
   private async organizationIdsForJoinRequestStatusFilter(
     viewerUserId: string,
-    requestStatus: number | undefined,
+    requestStatuses: number[] | undefined,
   ): Promise<string[] | undefined> {
-    if (requestStatus === undefined) {
+    if (requestStatuses === undefined || requestStatuses.length === 0) {
       return undefined;
     }
-    return organizationJoiningRequestRepository.findOrganizationIdsWhereLatestJoinRequestStatusEquals(
+    return organizationJoiningRequestRepository.findOrganizationIdsWhereLatestJoinRequestStatusIn(
       viewerUserId,
-      requestStatus,
+      requestStatuses,
     );
   }
 

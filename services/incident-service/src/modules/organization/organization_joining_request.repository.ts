@@ -176,13 +176,19 @@ export class OrganizationJoiningRequestRepository {
   }
 
   /**
-   * Organization ids where the viewer's latest non-deleted join request has exactly `status`
+   * Organization ids where the viewer's latest non-deleted join request has status in `statuses`
    * (by `updated_at` per organization). Used to filter org list queries.
    */
-  async findOrganizationIdsWhereLatestJoinRequestStatusEquals(
+  async findOrganizationIdsWhereLatestJoinRequestStatusIn(
     requesterId: string,
-    status: number,
+    statuses: number[],
   ): Promise<string[]> {
+    if (statuses.length === 0) {
+      return [];
+    }
+    const statusList = Prisma.join(
+      statuses.map((s) => Prisma.sql`${s}`),
+    );
     const rows = await this.prisma.$queryRaw<{ organization_id: string }[]>(
       Prisma.sql`
         SELECT organization_id FROM (
@@ -192,7 +198,7 @@ export class OrganizationJoiningRequestRepository {
             AND deleted_at IS NULL
           ORDER BY organization_id, updated_at DESC
         ) AS latest
-        WHERE latest.status = ${status}
+        WHERE latest.status IN (${statusList})
       `,
     );
     return rows.map((r) => r.organization_id);

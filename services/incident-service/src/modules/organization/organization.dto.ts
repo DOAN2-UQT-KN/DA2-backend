@@ -74,15 +74,18 @@ export interface OrganizationVerifyContactEmailQuery {
 /** Query for GET /api/v1/organizations (discovery). */
 export interface OrganizationListQuery {
   search?: string;
-  /** Organization lifecycle `GlobalStatus` (exact match on `organizations.status`). */
-  status?: number;
+  /**
+   * Organization lifecycle `GlobalStatus`: org `status` must be one of these values.
+   * Query as repeated `status=1&status=9` and/or comma-separated `status=1,9`.
+   */
+  status?: number[];
   /** When set, only organizations with this contact-email verification flag. */
   isEmailVerified?: boolean;
   /**
-   * Filter: only organizations where the viewer's latest join request for that org has this
-   * status (`JoinRequestStatus`, e.g. 12 pending, 14 approved, 18 rejected).
+   * Filter: only organizations where the viewer's latest join request for that org has one of
+   * these statuses (`JoinRequestStatus`, e.g. 12 pending, 14 approved). Use repeated or comma-separated params.
    */
-  requestStatus?: number;
+  requestStatus?: number[];
   page?: number;
   limit?: number;
   sortBy?: "createdAt" | "updatedAt" | "name";
@@ -92,15 +95,18 @@ export interface OrganizationListQuery {
 /** Query for GET /api/v1/organizations/my (organizations I own or am a member of). */
 export interface MyOrganizationsListQuery {
   search?: string;
-  /** Organization lifecycle `GlobalStatus` (exact match on `organizations.status`). */
-  status?: number;
+  /**
+   * Organization lifecycle `GlobalStatus`: org `status` must be one of these values.
+   * Query as repeated `status=1&status=9` and/or comma-separated `status=1,9`.
+   */
+  status?: number[];
   /** When set, only organizations with this contact-email verification flag. */
   isEmailVerified?: boolean;
   /**
-   * Filter: only organizations where the viewer's latest join request for that org has this
-   * status (`JoinRequestStatus`, e.g. 12 pending, 14 approved, 18 rejected).
+   * Filter: only organizations where the viewer's latest join request for that org has one of
+   * these statuses. Use repeated or comma-separated params.
    */
-  requestStatus?: number;
+  requestStatus?: number[];
   page?: number;
   limit?: number;
   sortBy?: "createdAt" | "updatedAt" | "name";

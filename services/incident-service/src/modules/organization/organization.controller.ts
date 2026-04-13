@@ -43,12 +43,59 @@ function parseOrganizationListEmailVerifiedQuery(
   return undefined;
 }
 
+/** Split repeated query params and comma-separated values into trimmed tokens. */
+function normalizeOrganizationQueryIntTokens(value: unknown): string[] {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  const out: string[] = [];
+  const pushSplit = (raw: string) => {
+    for (const p of raw.split(",")) {
+      const t = p.trim();
+      if (t) out.push(t);
+    }
+  };
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item !== undefined && item !== null && item !== "") {
+        pushSplit(String(item));
+      }
+    }
+  } else {
+    pushSplit(String(value));
+  }
+  return out;
+}
+
+function assertOptionalQueryIntTokenList(
+  value: unknown,
+  fieldLabel: string,
+): void {
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+  for (const t of normalizeOrganizationQueryIntTokens(value)) {
+    if (!/^-?\d+$/.test(t)) {
+      throw new Error(`${fieldLabel} must be integer(s)`);
+    }
+  }
+}
+
+function parseOrganizationListOrgStatusQuery(req: Request): number[] | undefined {
+  const tokens = normalizeOrganizationQueryIntTokens(req.query.status);
+  if (tokens.length === 0) return undefined;
+  return [...new Set(tokens.map((t) => parseInt(t, 10)))];
+}
+
 function parseOrganizationListRequestStatusFilterQuery(
   req: Request,
-): number | undefined {
-  const raw = req.query.request_status ?? req.query.requestStatus;
-  if (raw === undefined || raw === "") return undefined;
-  return parseInt(String(raw), 10);
+): number[] | undefined {
+  const tokens = [
+    ...normalizeOrganizationQueryIntTokens(req.query.request_status),
+    ...normalizeOrganizationQueryIntTokens(req.query.requestStatus),
+  ];
+  if (tokens.length === 0) return undefined;
+  return [...new Set(tokens.map((t) => parseInt(t, 10)))];
 }
 
 export class OrganizationController {
@@ -115,11 +162,26 @@ export class OrganizationController {
 
   listOrganizations = [
     query("search").optional().trim(),
-    query("status").optional().isInt(),
+    query("status")
+      .optional()
+      .custom((value) => {
+        assertOptionalQueryIntTokenList(value, "status");
+        return true;
+      }),
     query("isEmailVerified").optional().isIn(["true", "false", "1", "0"]),
     query("is_email_verified").optional().isIn(["true", "false", "1", "0"]),
-    query("request_status").optional().isInt(),
-    query("requestStatus").optional().isInt(),
+    query("request_status")
+      .optional()
+      .custom((value) => {
+        assertOptionalQueryIntTokenList(value, "request_status");
+        return true;
+      }),
+    query("requestStatus")
+      .optional()
+      .custom((value) => {
+        assertOptionalQueryIntTokenList(value, "requestStatus");
+        return true;
+      }),
     query("page").optional().isInt({ min: 1 }),
     query("limit").optional().isInt({ min: 1, max: 100 }),
     query("sortBy").optional().isIn(["createdAt", "updatedAt", "name"]),
@@ -141,10 +203,7 @@ export class OrganizationController {
         search: req.query.search
           ? String(req.query.search).trim()
           : undefined,
-        status:
-          req.query.status !== undefined && req.query.status !== ""
-            ? parseInt(String(req.query.status), 10)
-            : undefined,
+        status: parseOrganizationListOrgStatusQuery(req),
         isEmailVerified: parseOrganizationListEmailVerifiedQuery(req),
         requestStatus: parseOrganizationListRequestStatusFilterQuery(req),
         page: req.query.page
@@ -239,11 +298,26 @@ export class OrganizationController {
 
   listMyOrganizations = [
     query("search").optional().trim(),
-    query("status").optional().isInt(),
+    query("status")
+      .optional()
+      .custom((value) => {
+        assertOptionalQueryIntTokenList(value, "status");
+        return true;
+      }),
     query("isEmailVerified").optional().isIn(["true", "false", "1", "0"]),
     query("is_email_verified").optional().isIn(["true", "false", "1", "0"]),
-    query("request_status").optional().isInt(),
-    query("requestStatus").optional().isInt(),
+    query("request_status")
+      .optional()
+      .custom((value) => {
+        assertOptionalQueryIntTokenList(value, "request_status");
+        return true;
+      }),
+    query("requestStatus")
+      .optional()
+      .custom((value) => {
+        assertOptionalQueryIntTokenList(value, "requestStatus");
+        return true;
+      }),
     query("page").optional().isInt({ min: 1 }),
     query("limit").optional().isInt({ min: 1, max: 100 }),
     query("sortBy").optional().isIn(["createdAt", "updatedAt", "name"]),
@@ -266,10 +340,7 @@ export class OrganizationController {
         search: req.query.search
           ? String(req.query.search).trim()
           : undefined,
-        status:
-          req.query.status !== undefined && req.query.status !== ""
-            ? parseInt(String(req.query.status), 10)
-            : undefined,
+        status: parseOrganizationListOrgStatusQuery(req),
         isEmailVerified: parseOrganizationListEmailVerifiedQuery(req),
         requestStatus: parseOrganizationListRequestStatusFilterQuery(req),
         page: req.query.page

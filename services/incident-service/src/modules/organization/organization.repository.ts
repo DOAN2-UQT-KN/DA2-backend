@@ -73,7 +73,7 @@ export class OrganizationRepository {
   async findManyPaginated(
     filters: {
       search?: string;
-      status?: number;
+      status?: number[];
       isEmailVerified?: boolean;
       /** Intersect with this id set (e.g. join-request status filter for the current user). */
       organizationIdIn?: string[];
@@ -104,7 +104,9 @@ export class OrganizationRepository {
             },
           }
         : {}),
-      ...(filters.status !== undefined ? { status: filters.status } : {}),
+      ...(filters.status !== undefined && filters.status.length > 0
+        ? { status: { in: filters.status } }
+        : {}),
       ...(filters.isEmailVerified !== undefined
         ? { isEmailVerified: filters.isEmailVerified }
         : {}),
@@ -135,7 +137,7 @@ export class OrganizationRepository {
     userId: string,
     filters: {
       search?: string;
-      status?: number;
+      status?: number[];
       isEmailVerified?: boolean;
       organizationIdIn?: string[];
     },
@@ -176,7 +178,9 @@ export class OrganizationRepository {
             },
           }
         : {}),
-      ...(filters.status !== undefined ? { status: filters.status } : {}),
+      ...(filters.status !== undefined && filters.status.length > 0
+        ? { status: { in: filters.status } }
+        : {}),
       ...(filters.isEmailVerified !== undefined
         ? { isEmailVerified: filters.isEmailVerified }
         : {}),
