@@ -169,10 +169,16 @@ export class OrganizationService {
     });
   }
 
-  /** Admin-only at controller: approve organization (`status` → active). */
+  /**
+   * Admin-only at controller: set organization lifecycle after review
+   * (`status` → approved or rejected).
+   */
   async adminVerifyOrganization(
     organizationId: string,
     adminUserId: string,
+    targetStatus:
+      | GlobalStatus._STATUS_APPROVED
+      | GlobalStatus._STATUS_REJECTED,
   ): Promise<OrganizationResponse> {
     const existing = await organizationRepository.findById(organizationId);
     if (!existing) {
@@ -181,12 +187,46 @@ export class OrganizationService {
       );
     }
 
-    if (existing.status === GlobalStatus._STATUS_ACTIVE) {
-      return this.toOrganizationResponse(existing);
+    if (targetStatus === GlobalStatus._STATUS_APPROVED) {
+      if (existing.status === GlobalStatus._STATUS_APPROVED) {
+        return this.toOrganizationResponse(existing);
+      }
+      const canApprove =
+        existing.status === GlobalStatus._STATUS_INREVIEW ||
+        existing.status === GlobalStatus._STATUS_REJECTED;
+      if (!canApprove) {
+        throw new HttpError(
+          HTTP_STATUS.BAD_REQUEST.withMessage(
+            "Organization cannot be approved from its current status",
+          ),
+        );
+      }
+      const updated = await organizationRepository.update(organizationId, {
+        status: GlobalStatus._STATUS_APPROVED,
+        updatedBy: adminUserId,
+      });
+      return this.toOrganizationResponse(updated);
     }
 
+    if (existing.status === GlobalStatus._STATUS_REJECTED) {
+      return this.toOrganizationResponse(existing);
+    }
+    if (existing.status === GlobalStatus._STATUS_APPROVED) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage(
+          "Cannot reject an organization that is already approved",
+        ),
+      );
+    }
+    if (existing.status !== GlobalStatus._STATUS_INREVIEW) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage(
+          "Organization can only be rejected while it is in review",
+        ),
+      );
+    }
     const updated = await organizationRepository.update(organizationId, {
-      status: GlobalStatus._STATUS_ACTIVE,
+      status: GlobalStatus._STATUS_REJECTED,
       updatedBy: adminUserId,
     });
     return this.toOrganizationResponse(updated);

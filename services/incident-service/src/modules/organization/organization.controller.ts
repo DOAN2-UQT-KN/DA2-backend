@@ -13,8 +13,9 @@ import {
   sendHttpErrorResponse,
   sendSuccess,
 } from "../../constants/http-status";
-import { JoinRequestStatus } from "../../constants/status.enum";
+import { GlobalStatus, JoinRequestStatus } from "../../constants/status.enum";
 import type {
+  AdminVerifyOrganizationBody,
   CreateOrganizationBody,
   GetOrganizationJoinRequestsQuery,
   MyOrganizationJoinRequestsQuery,
@@ -370,10 +371,21 @@ export class OrganizationController {
   ];
 
   /**
-   * Approve an organization (admin only). Sets status to active (`GlobalStatus._STATUS_ACTIVE`).
+   * Approve or reject an organization (admin only) via body `status`:
+   * `GlobalStatus._STATUS_APPROVED` (14) or `_STATUS_REJECTED` (18).
    */
   adminVerifyOrganization = [
     orgIdParam,
+    body("status")
+      .isInt()
+      .toInt()
+      .isIn([
+        GlobalStatus._STATUS_APPROVED,
+        GlobalStatus._STATUS_REJECTED,
+      ])
+      .withMessage(
+        "status must be GlobalStatus approved (14) to approve or rejected (18) to reject",
+      ),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -399,16 +411,21 @@ export class OrganizationController {
         );
       }
 
+      const { status } = req.body as AdminVerifyOrganizationBody;
+
       try {
         const organization = await organizationService.adminVerifyOrganization(
           req.params.id,
           userId,
+          status,
         );
-        return sendSuccess(
-          res,
-          HTTP_STATUS.OK.withMessage("Organization approved successfully"),
-          { organization },
-        );
+        const message =
+          status === GlobalStatus._STATUS_APPROVED
+            ? "Organization approved successfully"
+            : "Organization rejected successfully";
+        return sendSuccess(res, HTTP_STATUS.OK.withMessage(message), {
+          organization,
+        });
       } catch (error) {
         if (sendHttpErrorResponse(res, error)) {
           return;

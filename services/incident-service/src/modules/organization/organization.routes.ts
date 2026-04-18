@@ -78,8 +78,9 @@ router.get("/", authenticate, organizationController.listOrganizations);
 
 /**
  * @route   PUT /api/v1/organizations/:id/verify
- * @desc    Admin-approve an organization (status → active).
+ * @desc    Admin approve or reject an organization (`GlobalStatus` in body: approved or rejected).
  * @access  Private (admin)
+ * @body    { status } — `14` (`_STATUS_APPROVED`) to approve, `18` (`_STATUS_REJECTED`) to reject (in-review only).
  */
 router.put(
   "/:id/verify",

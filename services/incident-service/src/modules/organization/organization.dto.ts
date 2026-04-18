@@ -10,6 +10,15 @@ export interface CreateOrganizationBody {
   contactEmail: string;
 }
 
+/**
+ * Body for PUT /api/v1/organizations/:id/verify (admin).
+ * `GlobalStatus._STATUS_APPROVED` (14) approves; `_STATUS_REJECTED` (18) rejects while in review.
+ */
+export interface AdminVerifyOrganizationBody {
+  /** `GlobalStatus`: use `_STATUS_APPROVED` (14) to approve, `_STATUS_REJECTED` (18) to reject. */
+  status: number;
+}
+
 /** Body for PUT /api/v1/organizations/:id (owner). At least one field required. */
 export interface UpdateOrganizationBody {
   name?: string;
