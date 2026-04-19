@@ -126,6 +126,11 @@ export interface MyOrganizationsListQuery {
    * these statuses. Use repeated or comma-separated params.
    */
   requestStatus?: number[];
+  /**
+   * When `true`, only organizations I own (`ownerId`). When `false`, only organizations where I am an
+   * approved member but not the owner. Omit for both (owned and member-of).
+   */
+  isOwner?: boolean;
   page?: number;
   limit?: number;
   sortBy?: "createdAt" | "updatedAt" | "name";

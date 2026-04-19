@@ -501,6 +501,7 @@ export class OrganizationService {
           status: query.status,
           isEmailVerified: query.isEmailVerified,
           organizationIdIn: joinRequestOrgIds,
+          isOwner: query.isOwner,
         },
         { skip, take: limit, sortBy, sortOrder },
       );

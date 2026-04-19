@@ -142,6 +142,8 @@ export class OrganizationRepository {
       status?: number[];
       isEmailVerified?: boolean;
       organizationIdIn?: string[];
+      /** Narrow to owned only (`true`) or member-but-not-owner (`false`). */
+      isOwner?: boolean;
     },
     options: {
       skip: number;
@@ -156,22 +158,38 @@ export class OrganizationRepository {
     ) {
       return { rows: [], total: 0 };
     }
+    const linkScope =
+      filters.isOwner === true
+        ? { ownerId: userId }
+        : filters.isOwner === false
+          ? {
+              ownerId: { not: userId },
+              members: {
+                some: {
+                  userId,
+                  deletedAt: null,
+                },
+              },
+            }
+          : {
+              OR: [
+                { ownerId: userId },
+                {
+                  members: {
+                    some: {
+                      userId,
+                      deletedAt: null,
+                    },
+                  },
+                },
+              ],
+            };
     const where = {
       deletedAt: null as null,
       ...(filters.organizationIdIn !== undefined
         ? { id: { in: filters.organizationIdIn } }
         : {}),
-      OR: [
-        { ownerId: userId },
-        {
-          members: {
-            some: {
-              userId,
-              deletedAt: null,
-            },
-          },
-        },
-      ],
+      ...linkScope,
       ...(filters.search
         ? {
             name: {

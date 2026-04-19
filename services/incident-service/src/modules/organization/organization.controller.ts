@@ -44,6 +44,17 @@ function parseOrganizationListEmailVerifiedQuery(
   return undefined;
 }
 
+function parseMyOrganizationsIsOwnerQuery(
+  req: Request,
+): boolean | undefined {
+  const raw = req.query.isOwner ?? req.query.is_owner;
+  if (raw === undefined || raw === "") return undefined;
+  const s = String(raw).toLowerCase();
+  if (s === "true" || s === "1") return true;
+  if (s === "false" || s === "0") return false;
+  return undefined;
+}
+
 /** Split repeated query params and comma-separated values into trimmed tokens. */
 function normalizeOrganizationQueryIntTokens(value: unknown): string[] {
   if (value === undefined || value === null || value === "") {
@@ -319,6 +330,8 @@ export class OrganizationController {
         assertOptionalQueryIntTokenList(value, "requestStatus");
         return true;
       }),
+    query("is_owner").optional().isIn(["true", "false", "1", "0"]),
+    query("isOwner").optional().isIn(["true", "false", "1", "0"]),
     query("page").optional().isInt({ min: 1 }),
     query("limit").optional().isInt({ min: 1, max: 100 }),
     query("sortBy").optional().isIn(["createdAt", "updatedAt", "name"]),
@@ -344,6 +357,7 @@ export class OrganizationController {
         status: parseOrganizationListOrgStatusQuery(req),
         isEmailVerified: parseOrganizationListEmailVerifiedQuery(req),
         requestStatus: parseOrganizationListRequestStatusFilterQuery(req),
+        isOwner: parseMyOrganizationsIsOwnerQuery(req),
         page: req.query.page
           ? parseInt(String(req.query.page), 10)
           : undefined,
