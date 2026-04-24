@@ -17,7 +17,7 @@ export const toCampaignResponse = (
 
   return {
     id: entity.id,
-    organizationId: entity.organizationId,
+    Organization: undefined,
     title: entity.title,
     description: entity.description,
     status: entity.status,
@@ -33,8 +33,8 @@ export const toCampaignResponse = (
     updatedBy: entity.updatedBy,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
-    reportIds: entity.reports.map((report) => report.id),
-    managerIds,
+    reports: [],
+    managers: managerIds.map((id) => ({ id, name: "", avatar: null })),
     votes: defaultResourceVoteSummary(null),
     saved: null,
   };

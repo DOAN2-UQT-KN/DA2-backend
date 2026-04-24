@@ -128,6 +128,11 @@ export class CampaignController {
     query("limit").optional().isInt({ min: 1, max: 100 }),
     query("sortBy").optional().isIn(["createdAt", "updatedAt", "title"]),
     query("sortOrder").optional().isIn(["asc", "desc"]),
+    query("organizationId").optional().isUUID(),
+    query("latitude").optional().isFloat({ min: -90, max: 90 }),
+    query("longitude").optional().isFloat({ min: -180, max: 180 }),
+    query("radiusKm").optional().isFloat({ min: 0 }),
+    query("difficulty").optional().isInt({ min: 1 }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -157,6 +162,21 @@ export class CampaignController {
             : undefined,
           managerId: req.query.managerId
             ? String(req.query.managerId).trim()
+            : undefined,
+          organizationId: req.query.organizationId
+            ? String(req.query.organizationId).trim()
+            : undefined,
+          latitude: req.query.latitude
+            ? parseFloat(String(req.query.latitude))
+            : undefined,
+          longitude: req.query.longitude
+            ? parseFloat(String(req.query.longitude))
+            : undefined,
+          radiusKm: req.query.radiusKm
+            ? parseFloat(String(req.query.radiusKm))
+            : undefined,
+          difficulty: req.query.difficulty
+            ? parseInt(String(req.query.difficulty), 10)
             : undefined,
           sortBy: req.query.sortBy as CampaignListQuery["sortBy"],
           sortOrder: req.query.sortOrder as CampaignListQuery["sortOrder"],

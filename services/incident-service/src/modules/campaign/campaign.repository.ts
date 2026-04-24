@@ -84,6 +84,11 @@ export class CampaignRepository {
       status?: number;
       createdBy?: string;
       managerId?: string;
+      organizationId?: string;
+      latitude?: number;
+      longitude?: number;
+      radiusKm?: number;
+      difficulty?: number;
     };
     skip: number;
     take: number;
