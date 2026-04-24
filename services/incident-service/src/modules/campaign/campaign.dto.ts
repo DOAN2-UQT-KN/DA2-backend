@@ -6,6 +6,12 @@ export interface CreateCampaignRequest {
   organizationId: string;
   title: string;
   description?: string;
+  startDate?: string;
+  endDate?: string;
+  detailAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
   /** 1 = easy … 4 = very hard; must exist in reward-service `difficulties` table. */
   difficulty: number;
   reportIds?: string[];
@@ -16,6 +22,12 @@ export interface UpdateCampaignRequest {
   description?: string;
   status?: GlobalStatus;
   difficulty?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  detailAddress?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  radiusKm?: number | null;
   reportIds?: string[];
   managerIds?: string[];
 }
@@ -26,10 +38,15 @@ export interface CampaignResponse {
   title: string;
   description: string | null;
   status: number;
+  startDate: Date | null;
+  endDate: Date | null;
+  detailAddress: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  radiusKm: number | null;
   difficulty: number;
   /** Green points for this difficulty tier (reward rules). */
   greenPoints: number;
-  isVerify: boolean;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;

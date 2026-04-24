@@ -70,8 +70,8 @@ export class BackgroundJobOrchestratorWorker {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[Worker ${this.workerId}] polling failed: ${message}`);
+      // const message = error instanceof Error ? error.message : String(error);
+      // console.error(`[Worker ${this.workerId}] polling failed: ${message}`);
       await this.sleep(ERROR_BACKOFF_MS);
     } finally {
       this.isRunning = false;

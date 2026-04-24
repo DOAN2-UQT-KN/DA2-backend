@@ -134,9 +134,14 @@ export class CampaignService {
           data: {
             title: request.title,
             description: request.description,
+            startDate: request.startDate ? new Date(request.startDate) : null,
+            endDate: request.endDate ? new Date(request.endDate) : null,
+            detailAddress: request.detailAddress,
+            latitude: request.latitude,
+            longitude: request.longitude,
+            radiusKm: request.radiusKm,
             difficulty: request.difficulty,
             status: GlobalStatus._STATUS_DRAFT,
-            isVerify: false,
             organizationId: request.organizationId,
             createdBy: userId,
             updatedBy: userId,
@@ -419,6 +424,32 @@ export class CampaignService {
           data: {
             title: request.title,
             description: request.description,
+            ...(request.startDate !== undefined
+              ? {
+                  startDate:
+                    request.startDate === null
+                      ? null
+                      : new Date(request.startDate),
+                }
+              : {}),
+            ...(request.endDate !== undefined
+              ? {
+                  endDate:
+                    request.endDate === null ? null : new Date(request.endDate),
+                }
+              : {}),
+            ...(request.detailAddress !== undefined
+              ? { detailAddress: request.detailAddress }
+              : {}),
+            ...(request.latitude !== undefined
+              ? { latitude: request.latitude }
+              : {}),
+            ...(request.longitude !== undefined
+              ? { longitude: request.longitude }
+              : {}),
+            ...(request.radiusKm !== undefined
+              ? { radiusKm: request.radiusKm }
+              : {}),
             status: request.status,
             ...(request.difficulty !== undefined
               ? { difficulty: request.difficulty }
@@ -486,7 +517,7 @@ export class CampaignService {
     return this.toResponseWithVotes(updated, viewerUserId ?? userId);
   }
 
-  /** Admin-only at controller: approve campaign (active) and mark verified. */
+  /** Admin-only at controller: approve campaign (active). */
   async adminVerifyCampaign(
     id: string,
     adminUserId: string,
@@ -497,12 +528,11 @@ export class CampaignService {
       throw new Error("Campaign not found");
     }
 
-    if (existing.isVerify) {
+    if (existing.status === GlobalStatus._STATUS_ACTIVE) {
       return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
     }
 
     const updated = await campaignRepository.update(id, {
-      isVerify: true,
       status: GlobalStatus._STATUS_ACTIVE,
       updatedBy: adminUserId,
     });
@@ -565,7 +595,6 @@ export class CampaignService {
           where: { id },
           data: {
             status: GlobalStatus._STATUS_INACTIVE,
-            isVerify: false,
             updatedBy: adminUserId,
           },
         });

@@ -32,6 +32,32 @@ export class CampaignController {
       .withMessage("organizationId must be a valid UUID"),
     body("title").notEmpty().withMessage("Title is required").trim(),
     body("description").optional().trim(),
+    body("startDate")
+      .optional()
+      .isISO8601()
+      .withMessage("startDate must be a valid ISO 8601 datetime"),
+    body("endDate")
+      .optional()
+      .isISO8601()
+      .withMessage("endDate must be a valid ISO 8601 datetime"),
+    body("detailAddress")
+      .optional()
+      .isString()
+      .isLength({ max: 255 })
+      .withMessage("detailAddress must be at most 255 characters")
+      .trim(),
+    body("latitude")
+      .optional()
+      .isFloat({ min: -90, max: 90 })
+      .withMessage("latitude must be between -90 and 90"),
+    body("longitude")
+      .optional()
+      .isFloat({ min: -180, max: 180 })
+      .withMessage("longitude must be between -180 and 180"),
+    body("radiusKm")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("radiusKm must be a non-negative number"),
     body("difficulty")
       .isInt({ min: 1 })
       .withMessage("difficulty must be a positive integer (reward-service tier)"),
@@ -470,6 +496,32 @@ export class CampaignController {
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
     body("title").optional().trim(),
     body("description").optional().trim(),
+    body("startDate")
+      .optional({ nullable: true })
+      .isISO8601()
+      .withMessage("startDate must be a valid ISO 8601 datetime"),
+    body("endDate")
+      .optional({ nullable: true })
+      .isISO8601()
+      .withMessage("endDate must be a valid ISO 8601 datetime"),
+    body("detailAddress")
+      .optional({ nullable: true })
+      .isString()
+      .isLength({ max: 255 })
+      .withMessage("detailAddress must be at most 255 characters")
+      .trim(),
+    body("latitude")
+      .optional({ nullable: true })
+      .isFloat({ min: -90, max: 90 })
+      .withMessage("latitude must be between -90 and 90"),
+    body("longitude")
+      .optional({ nullable: true })
+      .isFloat({ min: -180, max: 180 })
+      .withMessage("longitude must be between -180 and 180"),
+    body("radiusKm")
+      .optional({ nullable: true })
+      .isFloat({ min: 0 })
+      .withMessage("radiusKm must be a non-negative number"),
     body("status").optional().isInt().withMessage("Status must be an integer"),
     body("difficulty")
       .optional()
