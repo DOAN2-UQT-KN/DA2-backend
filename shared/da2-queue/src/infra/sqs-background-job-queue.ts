@@ -14,7 +14,11 @@ import type { BackgroundJobStore } from "../core/background-job-store";
 import type { QueueThresholdConfig } from "../core/queue-worker";
 
 export interface SqsBackgroundJobQueueOptions {
-  sqsClient: SQSClient;
+  /**
+   * Plain config object passed to `new SQSClient(options)`.
+   * Using `object` avoids cross-package AWS SDK version type conflicts.
+   */
+  sqsClientConfig: object;
   queueUrl: string;
   store: BackgroundJobStore;
   thresholds?: QueueThresholdConfig;
@@ -23,9 +27,17 @@ export interface SqsBackgroundJobQueueOptions {
 /**
  * SQS-backed durable queue. Handles enqueue (DB row + SQS send) and SQS primitives.
  * Does NOT own polling or message processing — those live in {@link QueueWorker}.
+ *
+ * The SQSClient is created internally from `sqsClientConfig`, so this class is
+ * source-compatible with any service regardless of which @aws-sdk version they use.
  */
 export class SqsBackgroundJobQueue implements BackgroundJobQueue {
-  constructor(private readonly options: SqsBackgroundJobQueueOptions) {}
+  private readonly _sqs: SQSClient;
+
+  constructor(private readonly options: SqsBackgroundJobQueueOptions) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this._sqs = new SQSClient(options.sqsClientConfig as any);
+  }
 
   get queueUrl(): string {
     return this.options.queueUrl;
@@ -47,7 +59,7 @@ export class SqsBackgroundJobQueue implements BackgroundJobQueue {
     };
 
     try {
-      await this.options.sqsClient.send(
+      await this._sqs.send(
         new SendMessageCommand({
           QueueUrl: this.options.queueUrl,
           MessageBody: JSON.stringify(envelope),
@@ -62,7 +74,7 @@ export class SqsBackgroundJobQueue implements BackgroundJobQueue {
   }
 
   async peekBatch(maxNumberOfMessages?: number): Promise<ReceivedMessage[]> {
-    const response = await this.options.sqsClient.send(
+    const response = await this._sqs.send(
       new ReceiveMessageCommand({
         QueueUrl: this.options.queueUrl,
         MaxNumberOfMessages:
@@ -106,7 +118,7 @@ export class SqsBackgroundJobQueue implements BackgroundJobQueue {
     receiptHandle: string,
     visibilityTimeoutSeconds: number,
   ): Promise<void> {
-    await this.options.sqsClient.send(
+    await this._sqs.send(
       new ChangeMessageVisibilityCommand({
         QueueUrl: this.options.queueUrl,
         ReceiptHandle: receiptHandle,
@@ -116,7 +128,7 @@ export class SqsBackgroundJobQueue implements BackgroundJobQueue {
   }
 
   async acknowledge(receiptHandle: string): Promise<void> {
-    await this.options.sqsClient.send(
+    await this._sqs.send(
       new DeleteMessageCommand({
         QueueUrl: this.options.queueUrl,
         ReceiptHandle: receiptHandle,

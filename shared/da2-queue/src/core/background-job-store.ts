@@ -1,82 +1,31 @@
-import { PrismaClient } from "@prisma/client";
-import { GlobalStatus } from "@da2/constants";
-
 /**
- * Shared Prisma-backed BackgroundJobStore.
- * Each service instantiates with its own PrismaClient.
+ * BackgroundJobStore contract.
+ *
+ * Concrete implementations live in each service (e.g. Prisma-backed store),
+ * so this shared package does not depend on any ORM/client types.
  */
-export class BackgroundJobStore {
-  constructor(private readonly prisma: PrismaClient) {}
+export interface BackgroundJobStore {
+  /** Persists a durable job record and returns the new job id. */
+  createJob(jobType: string, payload: unknown): Promise<string>;
 
-  async createJob(jobType: string, payload: unknown): Promise<string> {
-    const job = await this.prisma.backgroundJob.create({
-      data: {
-        jobType,
-        payload: payload as object,
-        status: GlobalStatus._STATUS_PENDING,
-        attempts: 0,
-      },
-    });
-    return job.id;
-  }
+  /**
+   * Attempts to transition a job into processing state.
+   * Returns false if the job is no longer eligible (e.g. already completed).
+   */
+  markProcessing(jobId: string, receiveCount: number): Promise<boolean>;
 
-  async markProcessing(jobId: string, receiveCount: number): Promise<boolean> {
-    const result = await this.prisma.backgroundJob.updateMany({
-      where: {
-        id: jobId,
-        status: {
-          in: [GlobalStatus._STATUS_PENDING, GlobalStatus._STATUS_INPROCESS],
-        },
-      },
-      data: {
-        status: GlobalStatus._STATUS_INPROCESS,
-        attempts: receiveCount,
-      },
-    });
-    return result.count > 0;
-  }
+  /** Marks a job completed successfully. */
+  markSucceeded(jobId: string): Promise<void>;
 
-  async markSucceeded(jobId: string): Promise<void> {
-    await this.prisma.backgroundJob.update({
-      where: { id: jobId },
-      data: {
-        status: GlobalStatus._STATUS_COMPLETED,
-        processedAt: new Date(),
-      },
-    });
-  }
+  /** Marks a job failed. */
+  markFailed(jobId: string): Promise<void>;
 
-  async markFailed(jobId: string): Promise<void> {
-    await this.prisma.backgroundJob.update({
-      where: { id: jobId },
-      data: {
-        status: GlobalStatus._STATUS_FAILED,
-        processedAt: new Date(),
-      },
-    });
-  }
+  /** Marks a job scheduled to retry (typically back to pending). */
+  markRetryScheduled(jobId: string): Promise<void>;
 
-  async markRetryScheduled(jobId: string): Promise<void> {
-    await this.prisma.backgroundJob.update({
-      where: { id: jobId },
-      data: { status: GlobalStatus._STATUS_PENDING },
-    });
-  }
+  /** Marks that the job was successfully enqueued to the underlying queue. */
+  markEnqueued(jobId: string): Promise<void>;
 
-  async markEnqueued(jobId: string): Promise<void> {
-    await this.prisma.backgroundJob.update({
-      where: { id: jobId },
-      data: { status: GlobalStatus._STATUS_PENDING },
-    });
-  }
-
-  async markFailedWithoutSend(jobId: string): Promise<void> {
-    await this.prisma.backgroundJob.update({
-      where: { id: jobId },
-      data: {
-        status: GlobalStatus._STATUS_FAILED,
-        processedAt: new Date(),
-      },
-    });
-  }
+  /** Marks job failed if enqueue/send to queue did not happen. */
+  markFailedWithoutSend(jobId: string): Promise<void>;
 }
