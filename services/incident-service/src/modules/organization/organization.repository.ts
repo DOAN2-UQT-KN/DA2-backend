@@ -72,6 +72,25 @@ export class OrganizationRepository {
     });
   }
 
+  async findManyByIds(ids: string[]) {
+    if (ids.length === 0) {
+      return [];
+    }
+    return this.prisma.organization.findMany({
+      where: {
+        id: { in: ids },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        logoUrl: true,
+        backgroundUrl: true,
+        contactEmail: true,
+      },
+    });
+  }
+
   async findManyPaginated(
     filters: {
       search?: string;

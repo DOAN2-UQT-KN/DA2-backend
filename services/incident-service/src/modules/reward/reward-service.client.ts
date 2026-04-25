@@ -30,21 +30,25 @@ export class RewardServiceClient {
   }
 
   async getDifficulties(): Promise<RewardDifficulty[]> {
-    const client = this.getClient();
-    const { data } = await client.get<
-      SuccessEnvelope<{ difficulties: RewardDifficulty[] }>
-    >("/internal/v1/difficulties");
-    if (!data?.success || !data.data?.difficulties) {
-      throw new Error("Invalid reward service list response");
+    try {
+      const client = this.getClient();
+      const { data } = await client.get<
+        SuccessEnvelope<{ difficulties: RewardDifficulty[] }>
+      >("/internal/v1/difficulties");
+      if (!data?.success || !data.data?.difficulties) {
+        return [];
+      }
+      return data.data.difficulties;
+    } catch {
+      return [];
     }
-    return data.data.difficulties;
   }
 
   async getDifficultyByLevel(
     level: number,
   ): Promise<RewardDifficulty | null> {
-    const client = this.getClient();
     try {
+      const client = this.getClient();
       const { data } = await client.get<
         SuccessEnvelope<{ difficulty: RewardDifficulty }>
       >(`/internal/v1/difficulties/level/${level}`);
@@ -53,10 +57,7 @@ export class RewardServiceClient {
       }
       return data.data.difficulty;
     } catch (e) {
-      if (axios.isAxiosError(e) && e.response?.status === 404) {
-        return null;
-      }
-      throw e;
+      return null;
     }
   }
 

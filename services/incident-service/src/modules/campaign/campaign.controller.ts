@@ -32,6 +32,32 @@ export class CampaignController {
       .withMessage("organizationId must be a valid UUID"),
     body("title").notEmpty().withMessage("Title is required").trim(),
     body("description").optional().trim(),
+    body("startDate")
+      .optional()
+      .isISO8601()
+      .withMessage("startDate must be a valid ISO 8601 datetime"),
+    body("endDate")
+      .optional()
+      .isISO8601()
+      .withMessage("endDate must be a valid ISO 8601 datetime"),
+    body("detailAddress")
+      .optional()
+      .isString()
+      .isLength({ max: 255 })
+      .withMessage("detailAddress must be at most 255 characters")
+      .trim(),
+    body("latitude")
+      .optional()
+      .isFloat({ min: -90, max: 90 })
+      .withMessage("latitude must be between -90 and 90"),
+    body("longitude")
+      .optional()
+      .isFloat({ min: -180, max: 180 })
+      .withMessage("longitude must be between -180 and 180"),
+    body("radiusKm")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("radiusKm must be a non-negative number"),
     body("difficulty")
       .isInt({ min: 1 })
       .withMessage("difficulty must be a positive integer (reward-service tier)"),
@@ -102,6 +128,11 @@ export class CampaignController {
     query("limit").optional().isInt({ min: 1, max: 100 }),
     query("sortBy").optional().isIn(["createdAt", "updatedAt", "title"]),
     query("sortOrder").optional().isIn(["asc", "desc"]),
+    query("organizationId").optional().isUUID(),
+    query("latitude").optional().isFloat({ min: -90, max: 90 }),
+    query("longitude").optional().isFloat({ min: -180, max: 180 }),
+    query("radiusKm").optional().isFloat({ min: 0 }),
+    query("difficulty").optional().isInt({ min: 1 }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -131,6 +162,21 @@ export class CampaignController {
             : undefined,
           managerId: req.query.managerId
             ? String(req.query.managerId).trim()
+            : undefined,
+          organizationId: req.query.organizationId
+            ? String(req.query.organizationId).trim()
+            : undefined,
+          latitude: req.query.latitude
+            ? parseFloat(String(req.query.latitude))
+            : undefined,
+          longitude: req.query.longitude
+            ? parseFloat(String(req.query.longitude))
+            : undefined,
+          radiusKm: req.query.radiusKm
+            ? parseFloat(String(req.query.radiusKm))
+            : undefined,
+          difficulty: req.query.difficulty
+            ? parseInt(String(req.query.difficulty), 10)
             : undefined,
           sortBy: req.query.sortBy as CampaignListQuery["sortBy"],
           sortOrder: req.query.sortOrder as CampaignListQuery["sortOrder"],
@@ -470,6 +516,32 @@ export class CampaignController {
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
     body("title").optional().trim(),
     body("description").optional().trim(),
+    body("startDate")
+      .optional({ nullable: true })
+      .isISO8601()
+      .withMessage("startDate must be a valid ISO 8601 datetime"),
+    body("endDate")
+      .optional({ nullable: true })
+      .isISO8601()
+      .withMessage("endDate must be a valid ISO 8601 datetime"),
+    body("detailAddress")
+      .optional({ nullable: true })
+      .isString()
+      .isLength({ max: 255 })
+      .withMessage("detailAddress must be at most 255 characters")
+      .trim(),
+    body("latitude")
+      .optional({ nullable: true })
+      .isFloat({ min: -90, max: 90 })
+      .withMessage("latitude must be between -90 and 90"),
+    body("longitude")
+      .optional({ nullable: true })
+      .isFloat({ min: -180, max: 180 })
+      .withMessage("longitude must be between -180 and 180"),
+    body("radiusKm")
+      .optional({ nullable: true })
+      .isFloat({ min: 0 })
+      .withMessage("radiusKm must be a non-negative number"),
     body("status").optional().isInt().withMessage("Status must be an integer"),
     body("difficulty")
       .optional()

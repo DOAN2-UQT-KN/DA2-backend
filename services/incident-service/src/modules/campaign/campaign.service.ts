@@ -27,9 +27,154 @@ import {
 import { savedResourceRepository } from "../saved_resource/saved_resource.repository";
 import { defaultResourceVoteSummary } from "../vote/vote.dto";
 import { voteService } from "../vote/vote.service";
+import { fetchOrganizationOwnersByUserIds } from "../organization/identity-user.client";
+import { toReportResponse } from "../report/report.entity";
+import type { ReportResponse } from "../report/report.dto";
 
 export class CampaignService {
   constructor() {}
+
+  private async enrichCampaignsForGet(
+    campaigns: CampaignResponse[],
+    viewerUserId?: string | null,
+  ): Promise<CampaignResponse[]> {
+    if (campaigns.length === 0) {
+      return campaigns;
+    }
+
+    const campaignIds = campaigns.map((campaign) => campaign.id);
+    const organizationIds = [
+      ...new Set(
+        campaigns
+          .map((campaign) => {
+            const raw = campaign as CampaignResponse & { organizationId?: string };
+            return raw.organizationId;
+          })
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const managerIds = [
+      ...new Set(
+        campaigns.flatMap((campaign) =>
+          campaign.managers.map((manager) => manager.id),
+        ),
+      ),
+    ];
+
+    const [organizations, reportsByCampaignId, managerMap] = await Promise.all([
+      organizationRepository
+        .findManyByIds(organizationIds)
+        .catch(() => []),
+      this.getReportsByCampaignIds(campaignIds, viewerUserId),
+      this.getManagerBasicMap(managerIds),
+    ]);
+
+    const organizationMap = new Map(
+      organizations.map((org) => [
+        org.id,
+        {
+          background_url: org.backgroundUrl,
+          contact_email: org.contactEmail,
+          logo_url: org.logoUrl,
+          name: org.name,
+        },
+      ]),
+    );
+
+    return campaigns.map((campaign) => {
+      const raw = campaign as CampaignResponse & { organizationId?: string };
+      const organization = raw.organizationId
+        ? organizationMap.get(raw.organizationId)
+        : undefined;
+
+      return {
+        ...campaign,
+        Organization: organization,
+        reports: reportsByCampaignId.get(campaign.id) ?? [],
+        managers: campaign.managers.map((manager) => {
+          const profile = managerMap.get(manager.id);
+          return {
+            id: manager.id,
+            name: profile?.name ?? "",
+            avatar: profile?.avatar ?? null,
+          };
+        }),
+      };
+    });
+  }
+
+  private async getManagerBasicMap(
+    managerIds: string[],
+  ): Promise<Map<string, { name: string; avatar: string | null }>> {
+    try {
+      const map = await fetchOrganizationOwnersByUserIds(managerIds);
+      const out = new Map<string, { name: string; avatar: string | null }>();
+      for (const [id, profile] of map.entries()) {
+        out.set(id, { name: profile.name, avatar: profile.avatar });
+      }
+      return out;
+    } catch {
+      return new Map();
+    }
+  }
+
+  private async getReportsByCampaignIds(
+    campaignIds: string[],
+    viewerUserId?: string | null,
+  ): Promise<Map<string, ReportResponse[]>> {
+    const out = new Map<string, ReportResponse[]>();
+    if (campaignIds.length === 0) {
+      return out;
+    }
+
+    const rows = await prisma.report.findMany({
+      where: {
+        campaignId: { in: campaignIds },
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    let reportResponses = rows.map((row) => toReportResponse(row));
+    if (reportResponses.length > 0) {
+      const ids = reportResponses.map((report) => report.id);
+      const [voteMap, savedIds] = await Promise.all([
+        voteService.getVoteSummariesForResources(
+          VoteResourceType.REPORT,
+          ids,
+          viewerUserId ?? null,
+        ),
+        viewerUserId
+          ? savedResourceRepository.findActiveSavedResourceIdsForUser(
+              viewerUserId,
+              SavedResourceType.REPORT,
+              ids,
+            )
+          : Promise.resolve(new Set<string>()),
+      ]);
+      reportResponses = reportResponses.map((report) => ({
+        ...report,
+        votes:
+          voteMap.get(report.id) ??
+          defaultResourceVoteSummary(viewerUserId ?? null),
+        saved: viewerUserId != null ? savedIds.has(report.id) : null,
+      }));
+    }
+
+    const byId = new Map(reportResponses.map((report) => [report.id, report]));
+    for (const row of rows) {
+      const mapped = byId.get(row.id);
+      if (!mapped) continue;
+      const list = out.get(row.campaignId ?? "");
+      if (!list) {
+        out.set(row.campaignId ?? "", [mapped]);
+      } else {
+        list.push(mapped);
+      }
+    }
+
+    return out;
+  }
 
   private async toResponse(
     entity: CampaignWithReports,
@@ -134,9 +279,14 @@ export class CampaignService {
           data: {
             title: request.title,
             description: request.description,
+            startDate: request.startDate ? new Date(request.startDate) : null,
+            endDate: request.endDate ? new Date(request.endDate) : null,
+            detailAddress: request.detailAddress,
+            latitude: request.latitude,
+            longitude: request.longitude,
+            radiusKm: request.radiusKm,
             difficulty: request.difficulty,
             status: GlobalStatus._STATUS_DRAFT,
-            isVerify: false,
             organizationId: request.organizationId,
             createdBy: userId,
             updatedBy: userId,
@@ -185,7 +335,8 @@ export class CampaignService {
   ): Promise<CampaignResponse | null> {
     const campaign = await campaignRepository.findById(id);
     if (!campaign) return null;
-    const base = await this.toResponseWithVotes(campaign, viewerUserId);
+    const baseRaw = await this.toResponseWithVotes(campaign, viewerUserId);
+    const [base] = await this.enrichCampaignsForGet([baseRaw], viewerUserId);
     if (!viewerUserId) {
       return base;
     }
@@ -225,7 +376,8 @@ export class CampaignService {
           greenByLevel.get(campaign.difficulty) ?? 0,
         ),
       );
-    return this.withCampaignVotes(list, viewerUserId);
+    const withVotes = await this.withCampaignVotes(list, viewerUserId);
+    return this.enrichCampaignsForGet(withVotes, viewerUserId);
   }
 
   async getCampaigns(
@@ -250,6 +402,11 @@ export class CampaignService {
         status: query.status,
         createdBy: query.createdBy,
         managerId: query.managerId,
+        organizationId: query.organizationId,
+        latitude: query.latitude,
+        longitude: query.longitude,
+        radiusKm: query.radiusKm,
+        difficulty: query.difficulty,
       },
       skip,
       take: limit,
@@ -268,8 +425,15 @@ export class CampaignService {
         greenByLevel.get(campaign.difficulty) ?? 0,
       ),
     );
+    const campaignsWithVotes = await this.withCampaignVotes(
+      campaigns,
+      viewerUserId,
+    );
     return {
-      campaigns: await this.withCampaignVotes(campaigns, viewerUserId),
+      campaigns: await this.enrichCampaignsForGet(
+        campaignsWithVotes,
+        viewerUserId,
+      ),
       total,
       page,
       limit,
@@ -357,11 +521,12 @@ export class CampaignService {
       campaignsRaw,
       viewerUserId,
     );
-    const campaigns: CampaignWithAwaitingSubmissionCount[] =
-      campaignsWithVotes.map((c) => ({
-        ...c,
-        awaitingSubmissionCount: countById.get(c.id) ?? 0,
-      }));
+    const campaigns = (
+      await this.enrichCampaignsForGet(campaignsWithVotes, viewerUserId)
+    ).map((c) => ({
+      ...c,
+      awaitingSubmissionCount: countById.get(c.id) ?? 0,
+    }));
 
     return {
       campaigns,
@@ -419,6 +584,32 @@ export class CampaignService {
           data: {
             title: request.title,
             description: request.description,
+            ...(request.startDate !== undefined
+              ? {
+                  startDate:
+                    request.startDate === null
+                      ? null
+                      : new Date(request.startDate),
+                }
+              : {}),
+            ...(request.endDate !== undefined
+              ? {
+                  endDate:
+                    request.endDate === null ? null : new Date(request.endDate),
+                }
+              : {}),
+            ...(request.detailAddress !== undefined
+              ? { detailAddress: request.detailAddress }
+              : {}),
+            ...(request.latitude !== undefined
+              ? { latitude: request.latitude }
+              : {}),
+            ...(request.longitude !== undefined
+              ? { longitude: request.longitude }
+              : {}),
+            ...(request.radiusKm !== undefined
+              ? { radiusKm: request.radiusKm }
+              : {}),
             status: request.status,
             ...(request.difficulty !== undefined
               ? { difficulty: request.difficulty }
@@ -486,7 +677,7 @@ export class CampaignService {
     return this.toResponseWithVotes(updated, viewerUserId ?? userId);
   }
 
-  /** Admin-only at controller: approve campaign (active) and mark verified. */
+  /** Admin-only at controller: approve campaign (active). */
   async adminVerifyCampaign(
     id: string,
     adminUserId: string,
@@ -497,12 +688,11 @@ export class CampaignService {
       throw new Error("Campaign not found");
     }
 
-    if (existing.isVerify) {
+    if (existing.status === GlobalStatus._STATUS_ACTIVE) {
       return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
     }
 
     const updated = await campaignRepository.update(id, {
-      isVerify: true,
       status: GlobalStatus._STATUS_ACTIVE,
       updatedBy: adminUserId,
     });
@@ -565,7 +755,6 @@ export class CampaignService {
           where: { id },
           data: {
             status: GlobalStatus._STATUS_INACTIVE,
-            isVerify: false,
             updatedBy: adminUserId,
           },
         });

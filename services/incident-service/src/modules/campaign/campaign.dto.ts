@@ -1,11 +1,31 @@
 import { GlobalStatus } from "../../constants/status.enum";
 import type { ResourceVoteSummary } from "../vote/vote.dto";
+import type { ReportResponse } from "../report/report.dto";
+
+export interface CampaignOrganizationResponse {
+  background_url: string | null;
+  contact_email: string | null;
+  logo_url: string | null;
+  name: string | null;
+}
+
+export interface CampaignManagerBasicResponse {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
 
 export interface CreateCampaignRequest {
   /** Organization that owns this campaign; caller must be that organization's owner. */
   organizationId: string;
   title: string;
   description?: string;
+  startDate?: string;
+  endDate?: string;
+  detailAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
   /** 1 = easy … 4 = very hard; must exist in reward-service `difficulties` table. */
   difficulty: number;
   reportIds?: string[];
@@ -16,26 +36,37 @@ export interface UpdateCampaignRequest {
   description?: string;
   status?: GlobalStatus;
   difficulty?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  detailAddress?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  radiusKm?: number | null;
   reportIds?: string[];
   managerIds?: string[];
 }
 
 export interface CampaignResponse {
   id: string;
-  organizationId: string;
+  Organization?: CampaignOrganizationResponse;
   title: string;
   description: string | null;
   status: number;
+  startDate: Date | null;
+  endDate: Date | null;
+  detailAddress: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  radiusKm: number | null;
   difficulty: number;
   /** Green points for this difficulty tier (reward rules). */
   greenPoints: number;
-  isVerify: boolean;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
-  reportIds: string[];
-  managerIds: string[];
+  reports: ReportResponse[];
+  managers: CampaignManagerBasicResponse[];
   votes: ResourceVoteSummary;
   /**
    * Whether the current user saved this campaign. Null when the viewer is unknown (unauthenticated).
@@ -178,6 +209,11 @@ export interface CampaignListQuery {
   limit?: number;
   sortBy?: "createdAt" | "updatedAt" | "title";
   sortOrder?: "asc" | "desc";
+  organizationId?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
+  difficulty?: number;
 }
 
 /** Query for GET /campaigns/admin/awaiting-multi-submission-review. */
