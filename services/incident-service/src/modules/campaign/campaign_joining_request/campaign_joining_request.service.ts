@@ -1,13 +1,23 @@
 import { rewardServiceClient } from "../../reward/reward-service.client";
+import {
+    fetchOrganizationOwnersByUserIds,
+    getUserProfile,
+} from "../../organization/identity-user.client";
+import type { OrganizationOwnerResponse } from "../../organization/organization.dto";
 import { campaignJoiningRequestRepository } from "./campaign_joining_request.repository";
 import { campaignRepository } from "../campaign.repository";
 import { campaignManagerRepository } from "../campaign_manager/campaign_manager.repository";
 import { GlobalStatus, JoinRequestStatus } from "../../../constants/status.enum";
 import type {
+    CampaignJoinRequestDetailResponse,
+    CampaignJoinRequestResponse,
     GetApprovedVolunteersQuery,
     GetJoinRequestsQuery,
     MyJoinRequestsQuery,
 } from "../campaign.dto";
+
+export type JoinRequestResponse = CampaignJoinRequestResponse;
+export type JoinRequestDetailResponse = CampaignJoinRequestDetailResponse;
 
 export interface CreateJoinRequestRequest {
     campaignId: string;
@@ -15,24 +25,6 @@ export interface CreateJoinRequestRequest {
 
 export interface UpdateJoinRequestRequest {
     status: GlobalStatus._STATUS_APPROVED | GlobalStatus._STATUS_REJECTED;
-}
-
-export interface JoinRequestResponse {
-    id: string;
-    campaignId: string | null;
-    volunteerId: string | null;
-    status: number;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-export interface JoinRequestDetailResponse extends JoinRequestResponse {
-    campaign?: {
-        id: string;
-        title: string;
-        status: number;
-        difficulty: number;
-    };
 }
 
 export class CampaignJoiningRequestService {
@@ -63,7 +55,8 @@ export class CampaignJoiningRequestService {
             volunteerId,
         });
 
-        return this.toResponse(request);
+        const profileMap = await fetchOrganizationOwnersByUserIds([volunteerId]);
+        return this.toResponse(request, profileMap);
     }
 
     /**
@@ -75,7 +68,11 @@ export class CampaignJoiningRequestService {
         const request =
             await campaignJoiningRequestRepository.findByIdWithCampaign(id);
         if (!request) return null;
-        return this.toDetailResponse(request);
+        const volunteerId = request.volunteerId;
+        const profileMap = volunteerId
+            ? await fetchOrganizationOwnersByUserIds([volunteerId])
+            : new Map<string, OrganizationOwnerResponse>();
+        return this.toDetailResponse(request, profileMap);
     }
 
     /**
@@ -116,8 +113,18 @@ export class CampaignJoiningRequestService {
                 { skip, take: limit, sortBy, sortOrder },
             );
 
+        const volunteerIds = [
+            ...new Set(
+                rows
+                    .map((r) => r.volunteerId)
+                    .filter((id): id is string => id != null && id.length > 0),
+            ),
+        ];
+        const profileMap =
+            await fetchOrganizationOwnersByUserIds(volunteerIds);
+
         return {
-            joinRequests: rows.map((r) => this.toResponse(r)),
+            joinRequests: rows.map((r) => this.toResponse(r, profileMap)),
             total,
             page,
             limit,
@@ -154,8 +161,10 @@ export class CampaignJoiningRequestService {
                 { skip, take: limit, sortBy, sortOrder },
             );
 
+        const profileMap = await fetchOrganizationOwnersByUserIds([volunteerId]);
+
         return {
-            joinRequests: rows.map((r) => this.toDetailResponse(r)),
+            joinRequests: rows.map((r) => this.toDetailResponse(r, profileMap)),
             total,
             page,
             limit,
@@ -214,7 +223,11 @@ export class CampaignJoiningRequestService {
             status,
         );
 
-        return this.toResponse(updated);
+        const vid = updated.volunteerId;
+        const profileMap = vid
+            ? await fetchOrganizationOwnersByUserIds([vid])
+            : new Map<string, OrganizationOwnerResponse>();
+        return this.toResponse(updated, profileMap);
     }
 
     /**
@@ -262,7 +275,7 @@ export class CampaignJoiningRequestService {
         managerId: string,
         query: GetApprovedVolunteersQuery,
     ): Promise<{
-        volunteers: { volunteerId: string | null }[];
+        volunteers: JoinRequestResponse[];
         total: number;
         page: number;
         limit: number;
@@ -289,8 +302,18 @@ export class CampaignJoiningRequestService {
                 { skip, take: limit, sortBy, sortOrder },
             );
 
+        const volunteerIds = [
+            ...new Set(
+                rows
+                    .map((r) => r.volunteerId)
+                    .filter((id): id is string => id != null && id.length > 0),
+            ),
+        ];
+        const profileMap =
+            await fetchOrganizationOwnersByUserIds(volunteerIds);
+
         return {
-            volunteers: rows.map((v) => ({ volunteerId: v.volunteerId })),
+            volunteers: rows.map((r) => this.toResponse(r, profileMap)),
             total,
             page,
             limit,
@@ -298,12 +321,33 @@ export class CampaignJoiningRequestService {
         };
     }
 
+    private volunteerFromMap(
+        profileMap: ReadonlyMap<string, OrganizationOwnerResponse>,
+        volunteerId: string | null,
+    ): OrganizationOwnerResponse {
+        if (!volunteerId) {
+            return { id: "", name: "", avatar: null, bio: null };
+        }
+        return (
+            getUserProfile(profileMap, volunteerId) ??
+            this.volunteerFallback(volunteerId)
+        );
+    }
+
+    private volunteerFallback(userId: string): OrganizationOwnerResponse {
+        return { id: userId, name: "", avatar: null, bio: null };
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private toResponse(r: any): JoinRequestResponse {
+    private toResponse(
+        r: any,
+        profileMap: ReadonlyMap<string, OrganizationOwnerResponse>,
+    ): JoinRequestResponse {
         return {
             id: r.id,
             campaignId: r.campaignId,
             volunteerId: r.volunteerId,
+            volunteer: this.volunteerFromMap(profileMap, r.volunteerId),
             status: r.status,
             createdAt: r.createdAt,
             updatedAt: r.updatedAt,
@@ -311,9 +355,12 @@ export class CampaignJoiningRequestService {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private toDetailResponse(r: any): JoinRequestDetailResponse {
+    private toDetailResponse(
+        r: any,
+        profileMap: ReadonlyMap<string, OrganizationOwnerResponse>,
+    ): JoinRequestDetailResponse {
         return {
-            ...this.toResponse(r),
+            ...this.toResponse(r, profileMap),
             campaign: r.campaign
                 ? {
                     id: r.campaign.id,

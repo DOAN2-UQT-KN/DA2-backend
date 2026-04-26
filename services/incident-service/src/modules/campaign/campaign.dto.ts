@@ -119,8 +119,32 @@ export interface GetJoinRequestsQuery {
   sortOrder?: "asc" | "desc";
 }
 
+/**
+ * Join request with volunteer profile from identity-service (name, avatar, bio),
+ * same shape as organization `owner` / `requester` on org join requests.
+ */
+export interface CampaignJoinRequestResponse {
+  id: string;
+  campaignId: string | null;
+  volunteerId: string | null;
+  volunteer: OrganizationOwnerResponse;
+  status: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CampaignJoinRequestDetailResponse
+  extends CampaignJoinRequestResponse {
+  campaign?: {
+    id: string;
+    title: string;
+    status: number;
+    difficulty: number;
+  };
+}
+
 export interface PaginatedJoinRequestsEnvelopeData {
-  joinRequests: object[];
+  joinRequests: CampaignJoinRequestResponse[];
   total: number;
   page: number;
   limit: number;
@@ -166,7 +190,7 @@ export interface CampaignManagersListQuery {
 }
 
 export interface PaginatedVolunteersEnvelopeData {
-  volunteers: object[];
+  volunteers: CampaignJoinRequestResponse[];
   total: number;
   page: number;
   limit: number;
