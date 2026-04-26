@@ -179,11 +179,18 @@ export class CampaignService {
   private async toResponse(
     entity: CampaignWithReports,
   ): Promise<CampaignResponse> {
-    const tier = await rewardServiceClient.getDifficultyByLevel(
-      entity.difficulty,
-    );
+    const [tier, currentMembers] = await Promise.all([
+      rewardServiceClient.getDifficultyByLevel(entity.difficulty),
+      campaignJoiningRequestRepository.countApprovedByCampaignId(entity.id),
+    ]);
     const greenPoints = tier?.greenPoints ?? 0;
-    return toCampaignResponse(entity, greenPoints);
+    const maxMembers = tier?.maxVolunteers ?? null;
+    return toCampaignResponse(
+      entity,
+      greenPoints,
+      currentMembers,
+      maxMembers,
+    );
   }
 
   private async withCampaignVotes(
@@ -368,15 +375,24 @@ export class CampaignService {
     const greenByLevel = new Map(
       difficulties.map((d) => [d.level, d.greenPoints]),
     );
-    const list = campaignIds
+    const maxByLevel = new Map(
+      difficulties.map((d) => [d.level, d.maxVolunteers]),
+    );
+    const resolved = campaignIds
       .map((id) => byId.get(id))
-      .filter((row): row is CampaignWithReports => row !== undefined)
-      .map((campaign) =>
-        toCampaignResponse(
-          campaign,
-          greenByLevel.get(campaign.difficulty) ?? 0,
-        ),
+      .filter((row): row is CampaignWithReports => row !== undefined);
+    const approvedByCampaignId =
+      await campaignJoiningRequestRepository.countApprovedByCampaignIds(
+        resolved.map((c) => c.id),
       );
+    const list = resolved.map((campaign) =>
+      toCampaignResponse(
+        campaign,
+        greenByLevel.get(campaign.difficulty) ?? 0,
+        approvedByCampaignId.get(campaign.id) ?? 0,
+        maxByLevel.get(campaign.difficulty) ?? null,
+      ),
+    );
     const withVotes = await this.withCampaignVotes(list, viewerUserId);
     return this.enrichCampaignsForGet(withVotes, viewerUserId);
   }
@@ -419,11 +435,20 @@ export class CampaignService {
     const greenByLevel = new Map(
       difficulties.map((d) => [d.level, d.greenPoints]),
     );
+    const maxByLevel = new Map(
+      difficulties.map((d) => [d.level, d.maxVolunteers]),
+    );
+    const approvedByCampaignId =
+      await campaignJoiningRequestRepository.countApprovedByCampaignIds(
+        rows.map((c) => c.id),
+      );
 
     const campaigns = rows.map((campaign) =>
       toCampaignResponse(
         campaign,
         greenByLevel.get(campaign.difficulty) ?? 0,
+        approvedByCampaignId.get(campaign.id) ?? 0,
+        maxByLevel.get(campaign.difficulty) ?? null,
       ),
     );
     const campaignsWithVotes = await this.withCampaignVotes(
@@ -503,20 +528,31 @@ export class CampaignService {
     const greenByLevel = new Map(
       difficulties.map((d) => [d.level, d.greenPoints]),
     );
-
-    const campaignsRaw: CampaignWithAwaitingSubmissionCount[] = pageIds
+    const maxByLevel = new Map(
+      difficulties.map((d) => [d.level, d.maxVolunteers]),
+    );
+    const pageEntities = pageIds
       .map((id) => byId.get(id))
-      .filter((row): row is NonNullable<typeof row> => row !== undefined)
-      .map((entity) => {
+      .filter((row): row is NonNullable<typeof row> => row !== undefined);
+    const approvedByCampaignId =
+      await campaignJoiningRequestRepository.countApprovedByCampaignIds(
+        pageEntities.map((e) => e.id),
+      );
+
+    const campaignsRaw: CampaignWithAwaitingSubmissionCount[] = pageEntities.map(
+      (entity) => {
         const base = toCampaignResponse(
           entity,
           greenByLevel.get(entity.difficulty) ?? 0,
+          approvedByCampaignId.get(entity.id) ?? 0,
+          maxByLevel.get(entity.difficulty) ?? null,
         );
         return {
           ...base,
           awaitingSubmissionCount: countById.get(entity.id) ?? 0,
         };
-      });
+      },
+    );
 
     const campaignsWithVotes = await this.withCampaignVotes(
       campaignsRaw,

@@ -64,6 +64,10 @@ export interface CampaignResponse {
   difficulty: number;
   /** Green points for this difficulty tier (reward rules). */
   greenPoints: number;
+  /** Count of approved campaign join requests (volunteers). */
+  currentMembers: number;
+  /** Volunteer cap for this difficulty tier from reward-service; null means no limit. */
+  maxMembers: number | null;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;

@@ -181,6 +181,31 @@ export class CampaignJoiningRequestRepository {
         });
     }
 
+    /** Approved join counts per campaign; campaigns with zero approved are omitted. */
+    async countApprovedByCampaignIds(
+        campaignIds: string[],
+    ): Promise<Map<string, number>> {
+        if (campaignIds.length === 0) {
+            return new Map();
+        }
+        const groups = await this.prisma.campaignJoiningRequest.groupBy({
+            by: ["campaignId"],
+            where: {
+                campaignId: { in: campaignIds },
+                status: JoinRequestStatus._STATUS_APPROVED,
+                deletedAt: null,
+            },
+            _count: { _all: true },
+        });
+        const out = new Map<string, number>();
+        for (const g of groups) {
+            if (g.campaignId != null) {
+                out.set(g.campaignId, g._count._all);
+            }
+        }
+        return out;
+    }
+
     /** Distinct approved volunteer user IDs for campaign completion rewards. */
     async findApprovedVolunteerIdsByCampaignId(
         campaignId: string,
