@@ -1,6 +1,6 @@
 import { Report } from "@prisma/client";
 import { defaultResourceVoteSummary } from "../vote/vote.dto";
-import { ReportResponse } from "./report.dto";
+import type { ReportResponse } from "./report.dto";
 
 // Type-based entity
 export type ReportEntity = Report;
@@ -12,6 +12,7 @@ export const toReportResponse = (
 ): ReportResponse => ({
   id: entity.id,
   userId: entity.userId,
+  user: null,
   title: entity.title,
   description: entity.description,
   wasteType: entity.wasteType,

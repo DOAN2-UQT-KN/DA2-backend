@@ -30,12 +30,49 @@ import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 import { savedResourceRepository } from "../saved_resource/saved_resource.repository";
 import { defaultResourceVoteSummary } from "../vote/vote.dto";
 import { voteService } from "../vote/vote.service";
+import { fetchOrganizationOwnersByUserIds } from "../organization/identity-user.client";
+import type { OrganizationOwnerResponse } from "../organization/organization.dto";
 
 /** Admin moderation: report is banned / hidden (`GlobalStatus._STATUS_INACTIVE`). */
 const REPORT_STATUS_BANNED = ReportStatus._STATUS_INACTIVE;
 
 export class ReportService {
   constructor() {}
+
+  private reporterProfileFallback(userId: string): OrganizationOwnerResponse {
+    return { id: userId, name: "", avatar: null, bio: null };
+  }
+
+  /**
+   * Fills `user` (name, avatar) from identity-service for each report with a `userId`.
+   */
+  async attachReporterProfilesToReports<T extends ReportResponse>(
+    reports: T[],
+  ): Promise<T[]> {
+    if (reports.length === 0) {
+      return reports;
+    }
+    const userIds = [
+      ...new Set(
+        reports.map((r) => r.userId).filter((id): id is string => id != null),
+      ),
+    ];
+    if (userIds.length === 0) {
+      return reports.map(
+        (r) => ({ ...r, user: null }) as T,
+      );
+    }
+    const map = await fetchOrganizationOwnersByUserIds(userIds);
+    return reports.map(
+      (r) =>
+        ({
+          ...r,
+          user: r.userId
+            ? (map.get(r.userId) ?? this.reporterProfileFallback(r.userId))
+            : null,
+        }) as T,
+    );
+  }
 
   private async attachVotesToReports<T extends ReportResponse>(
     reports: T[],
@@ -59,12 +96,13 @@ export class ReportService {
           )
         : Promise.resolve(new Set<string>()),
     ]);
-    return reports.map((r) => ({
+    const withVotes = reports.map((r) => ({
       ...r,
       votes:
         map.get(r.id) ?? defaultResourceVoteSummary(viewerUserId ?? null),
       saved: viewerUserId != null ? savedIds.has(r.id) : null,
     }));
+    return this.attachReporterProfilesToReports(withVotes);
   }
 
   private async withReportVote(

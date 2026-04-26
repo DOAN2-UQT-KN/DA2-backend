@@ -19,7 +19,9 @@ export const toCampaignResponse = (
 
   return {
     id: entity.id,
+    organizationId: entity.organizationId,
     Organization: undefined,
+    owner: null,
     title: entity.title,
     banner: entity.banner,
     description: entity.description,

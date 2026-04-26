@@ -87,6 +87,7 @@ export class OrganizationRepository {
         logoUrl: true,
         backgroundUrl: true,
         contactEmail: true,
+        ownerId: true,
       },
     });
   }

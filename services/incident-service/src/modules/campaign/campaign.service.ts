@@ -28,11 +28,17 @@ import { savedResourceRepository } from "../saved_resource/saved_resource.reposi
 import { defaultResourceVoteSummary } from "../vote/vote.dto";
 import { voteService } from "../vote/vote.service";
 import { fetchOrganizationOwnersByUserIds } from "../organization/identity-user.client";
+import type { OrganizationOwnerResponse } from "../organization/organization.dto";
 import { toReportResponse } from "../report/report.entity";
 import type { ReportResponse } from "../report/report.dto";
+import { reportService } from "../report/report.service";
 
 export class CampaignService {
   constructor() {}
+
+  private ownerFallback(userId: string): OrganizationOwnerResponse {
+    return { id: userId, name: "", avatar: null, bio: null };
+  }
 
   private async enrichCampaignsForGet(
     campaigns: CampaignResponse[],
@@ -45,12 +51,7 @@ export class CampaignService {
     const campaignIds = campaigns.map((campaign) => campaign.id);
     const organizationIds = [
       ...new Set(
-        campaigns
-          .map((campaign) => {
-            const raw = campaign as CampaignResponse & { organizationId?: string };
-            return raw.organizationId;
-          })
-          .filter((id): id is string => Boolean(id)),
+        campaigns.map((c) => c.organizationId).filter((id): id is string => Boolean(id)),
       ),
     ];
     const managerIds = [
@@ -61,13 +62,18 @@ export class CampaignService {
       ),
     ];
 
-    const [organizations, reportsByCampaignId, managerMap] = await Promise.all([
+    const [organizations, reportsByCampaignId] = await Promise.all([
       organizationRepository
         .findManyByIds(organizationIds)
         .catch(() => []),
       this.getReportsByCampaignIds(campaignIds, viewerUserId),
-      this.getManagerBasicMap(managerIds),
     ]);
+
+    const orgOwnerIds = [
+      ...new Set(organizations.map((o) => o.ownerId).filter(Boolean)),
+    ];
+    const identityUserIds = [...new Set([...managerIds, ...orgOwnerIds])];
+    const profileMap = await fetchOrganizationOwnersByUserIds(identityUserIds);
 
     const organizationMap = new Map(
       organizations.map((org) => [
@@ -77,22 +83,32 @@ export class CampaignService {
           contact_email: org.contactEmail,
           logo_url: org.logoUrl,
           name: org.name,
+          ownerId: org.ownerId,
         },
       ]),
     );
 
     return campaigns.map((campaign) => {
-      const raw = campaign as CampaignResponse & { organizationId?: string };
-      const organization = raw.organizationId
-        ? organizationMap.get(raw.organizationId)
+      const orgRow = organizationMap.get(campaign.organizationId);
+      const orgOwner = orgRow
+        ? (profileMap.get(orgRow.ownerId) ?? this.ownerFallback(orgRow.ownerId))
+        : null;
+      const organization = orgRow
+        ? {
+            background_url: orgRow.background_url,
+            contact_email: orgRow.contact_email,
+            logo_url: orgRow.logo_url,
+            name: orgRow.name,
+          }
         : undefined;
 
       return {
         ...campaign,
+        owner: orgOwner,
         Organization: organization,
         reports: reportsByCampaignId.get(campaign.id) ?? [],
         managers: campaign.managers.map((manager) => {
-          const profile = managerMap.get(manager.id);
+          const profile = profileMap.get(manager.id);
           return {
             id: manager.id,
             name: profile?.name ?? "",
@@ -101,21 +117,6 @@ export class CampaignService {
         }),
       };
     });
-  }
-
-  private async getManagerBasicMap(
-    managerIds: string[],
-  ): Promise<Map<string, { name: string; avatar: string | null }>> {
-    try {
-      const map = await fetchOrganizationOwnersByUserIds(managerIds);
-      const out = new Map<string, { name: string; avatar: string | null }>();
-      for (const [id, profile] of map.entries()) {
-        out.set(id, { name: profile.name, avatar: profile.avatar });
-      }
-      return out;
-    } catch {
-      return new Map();
-    }
   }
 
   private async getReportsByCampaignIds(
@@ -159,6 +160,8 @@ export class CampaignService {
           defaultResourceVoteSummary(viewerUserId ?? null),
         saved: viewerUserId != null ? savedIds.has(report.id) : null,
       }));
+      reportResponses =
+        await reportService.attachReporterProfilesToReports(reportResponses);
     }
 
     const byId = new Map(reportResponses.map((report) => [report.id, report]));

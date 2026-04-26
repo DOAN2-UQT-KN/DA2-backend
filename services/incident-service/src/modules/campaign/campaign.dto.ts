@@ -1,4 +1,5 @@
 import { GlobalStatus } from "../../constants/status.enum";
+import type { OrganizationOwnerResponse } from "../organization/organization.dto";
 import type { ResourceVoteSummary } from "../vote/vote.dto";
 import type { ReportResponse } from "../report/report.dto";
 
@@ -50,7 +51,11 @@ export interface UpdateCampaignRequest {
 
 export interface CampaignResponse {
   id: string;
+  /** Organization the campaign belongs to. */
+  organizationId: string;
   Organization?: CampaignOrganizationResponse;
+  /** Organization owner profile from identity-service (name, avatar). */
+  owner: OrganizationOwnerResponse | null;
   title: string;
   banner: string | null;
   description: string | null;

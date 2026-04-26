@@ -1,3 +1,4 @@
+import type { OrganizationOwnerResponse } from "../organization/organization.dto";
 import type { ResourceVoteSummary } from "../vote/vote.dto";
 
 // Request DTOs
@@ -50,6 +51,11 @@ export type ReportSearchWithScope = ReportSearchQuery & {
 export interface ReportResponse {
   id: string;
   userId: string | null;
+  /**
+   * Reporter profile from identity-service when `userId` is set; null otherwise
+   * or if identity is unavailable.
+   */
+  user: OrganizationOwnerResponse | null;
   title: string | null;
   description: string | null;
   wasteType: string | null;
