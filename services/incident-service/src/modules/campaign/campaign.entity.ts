@@ -19,6 +19,7 @@ export const toCampaignResponse = (
     id: entity.id,
     Organization: undefined,
     title: entity.title,
+    banner: entity.banner,
     description: entity.description,
     status: entity.status,
     startDate: entity.startDate,

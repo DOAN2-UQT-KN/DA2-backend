@@ -278,6 +278,7 @@ export class CampaignService {
         const campaign = await tx.campaign.create({
           data: {
             title: request.title,
+            banner: request.banner,
             description: request.description,
             startDate: request.startDate ? new Date(request.startDate) : null,
             endDate: request.endDate ? new Date(request.endDate) : null,
@@ -583,6 +584,7 @@ export class CampaignService {
           where: { id },
           data: {
             title: request.title,
+            ...(request.banner !== undefined ? { banner: request.banner } : {}),
             description: request.description,
             ...(request.startDate !== undefined
               ? {

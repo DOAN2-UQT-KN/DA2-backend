@@ -19,6 +19,7 @@ export interface CreateCampaignRequest {
   /** Organization that owns this campaign; caller must be that organization's owner. */
   organizationId: string;
   title: string;
+  banner?: string;
   description?: string;
   startDate?: string;
   endDate?: string;
@@ -33,6 +34,7 @@ export interface CreateCampaignRequest {
 
 export interface UpdateCampaignRequest {
   title?: string;
+  banner?: string | null;
   description?: string;
   status?: GlobalStatus;
   difficulty?: number;
@@ -50,6 +52,7 @@ export interface CampaignResponse {
   id: string;
   Organization?: CampaignOrganizationResponse;
   title: string;
+  banner: string | null;
   description: string | null;
   status: number;
   startDate: Date | null;

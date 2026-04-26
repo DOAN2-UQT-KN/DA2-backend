@@ -59,6 +59,7 @@ model Report {
 model Campaign {
   id          String  @id @default(uuid()) @db.Uuid
   title       String  @db.VarChar(200)
+  banner      String? @db.VarChar(2048)
   description String?
   status      Int     @default(12)
   startDate   DateTime? @map("start_date")

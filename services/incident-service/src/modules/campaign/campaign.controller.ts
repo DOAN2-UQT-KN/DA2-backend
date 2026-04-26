@@ -31,6 +31,12 @@ export class CampaignController {
       .isUUID()
       .withMessage("organizationId must be a valid UUID"),
     body("title").notEmpty().withMessage("Title is required").trim(),
+    body("banner")
+      .optional()
+      .isString()
+      .isLength({ max: 2048 })
+      .withMessage("banner must be at most 2048 characters")
+      .trim(),
     body("description").optional().trim(),
     body("startDate")
       .optional()
@@ -515,6 +521,12 @@ export class CampaignController {
   updateCampaign = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
     body("title").optional().trim(),
+    body("banner")
+      .optional({ nullable: true })
+      .isString()
+      .isLength({ max: 2048 })
+      .withMessage("banner must be at most 2048 characters")
+      .trim(),
     body("description").optional().trim(),
     body("startDate")
       .optional({ nullable: true })
