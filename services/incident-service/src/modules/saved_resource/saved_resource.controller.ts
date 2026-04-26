@@ -67,8 +67,11 @@ export class SavedResourceController {
       };
 
       try {
-        const result = await savedResourceService.listForUser(userId, q);
-        sendSuccess(res, HTTP_STATUS.OK, result);
+        const saved_resource = await savedResourceService.listForUser(
+          userId,
+          q,
+        );
+        sendSuccess(res, HTTP_STATUS.OK, { saved_resource });
       } catch (error) {
         console.error("List saved resources error:", error);
         sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
@@ -92,11 +95,11 @@ export class SavedResourceController {
       }
 
       try {
-        const savedResource = await savedResourceService.save(userId, {
+        const saved_resource = await savedResourceService.save(userId, {
           resourceId: req.body.resourceId,
           resourceType: req.body.resourceType as SavedResourceType,
         });
-        return sendSuccess(res, HTTP_STATUS.OK, { savedResource });
+        return sendSuccess(res, HTTP_STATUS.OK, { saved_resource });
       } catch (error) {
         if (sendHttpErrorResponse(res, error)) {
           return;

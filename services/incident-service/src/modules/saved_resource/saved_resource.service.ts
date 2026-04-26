@@ -1,11 +1,16 @@
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 import { SavedResourceType } from "../../constants/status.enum";
 import { campaignRepository } from "../campaign/campaign.repository";
+import { campaignService } from "../campaign/campaign.service";
+import type { CampaignResponse } from "../campaign/campaign.dto";
 import { reportRepository } from "../report/report.repository";
+import { reportService } from "../report/report.service";
+import type { ReportDetailResponse } from "../report/report.dto";
 import {
-  PaginatedSavedResourcesResponse,
+  PaginatedSavedResourcesList,
   SaveResourceBody,
   SaveResourceResponse,
+  SaveResourceWithResourceResponse,
   SavedResourceListQuery,
 } from "./saved_resource.dto";
 import { savedResourceRepository } from "./saved_resource.repository";
@@ -54,6 +59,25 @@ export class SavedResourceService {
     };
   }
 
+  private async hydrateResource(
+    userId: string,
+    resourceType: SavedResourceType,
+    resourceId: string,
+  ): Promise<ReportDetailResponse | CampaignResponse | null> {
+    if (resourceType === SavedResourceType.REPORT) {
+      const list = await reportService.getReportsByIds([resourceId], userId);
+      return list[0] ?? null;
+    }
+    if (resourceType === SavedResourceType.CAMPAIGN) {
+      const list = await campaignService.getCampaignsByIds(
+        [resourceId],
+        userId,
+      );
+      return list[0] ?? null;
+    }
+    return null;
+  }
+
   /**
    * Toggle / upsert saved state: no row → create (saved). Row with deletedAt → restore.
    * Row already active (saved) → soft-delete (deletedAt = now).
@@ -61,7 +85,7 @@ export class SavedResourceService {
   async save(
     userId: string,
     body: SaveResourceBody,
-  ): Promise<SaveResourceResponse> {
+  ): Promise<SaveResourceWithResourceResponse> {
     await this.ensureSaveableResource(body.resourceType, body.resourceId);
 
     const existing = await savedResourceRepository.findByUserAndResource(
@@ -70,28 +94,40 @@ export class SavedResourceService {
       body.resourceId,
     );
 
+    let row: {
+      id: string;
+      userId: string;
+      resourceId: string;
+      resourceType: string;
+      createdAt: Date;
+      updatedAt: Date;
+      deletedAt: Date | null;
+    };
     if (!existing) {
-      const created = await savedResourceRepository.create(
+      row = await savedResourceRepository.create(
         userId,
         body.resourceType,
         body.resourceId,
       );
-      return this.toResponse(created);
+    } else if (existing.deletedAt != null) {
+      row = await savedResourceRepository.restore(existing.id);
+    } else {
+      row = await savedResourceRepository.softDelete(existing.id);
     }
 
-    if (existing.deletedAt != null) {
-      const restored = await savedResourceRepository.restore(existing.id);
-      return this.toResponse(restored);
-    }
-
-    const removed = await savedResourceRepository.softDelete(existing.id);
-    return this.toResponse(removed);
+    const base = this.toResponse(row);
+    const resource = await this.hydrateResource(
+      userId,
+      body.resourceType,
+      body.resourceId,
+    );
+    return { ...base, resource };
   }
 
   async listForUser(
     userId: string,
     query: SavedResourceListQuery,
-  ): Promise<PaginatedSavedResourcesResponse> {
+  ): Promise<PaginatedSavedResourcesList> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const sortBy = query.sortBy ?? "createdAt";
@@ -113,8 +149,34 @@ export class SavedResourceService {
         sortOrder,
       });
 
+    const reportIds = rows
+      .filter((r) => r.resourceType === SavedResourceType.REPORT)
+      .map((r) => r.resourceId);
+    const campaignIds = rows
+      .filter((r) => r.resourceType === SavedResourceType.CAMPAIGN)
+      .map((r) => r.resourceId);
+
+    const [reports, campaigns] = await Promise.all([
+      reportService.getReportsByIds(reportIds, userId),
+      campaignService.getCampaignsByIds(campaignIds, userId),
+    ]);
+
+    const reportById = new Map(reports.map((r) => [r.id, r]));
+    const campaignById = new Map(campaigns.map((c) => [c.id, c]));
+
+    const items = rows.map((row) => {
+      const rt = row.resourceType as SavedResourceType;
+      const resource =
+        rt === SavedResourceType.REPORT
+          ? (reportById.get(row.resourceId) ?? null)
+          : rt === SavedResourceType.CAMPAIGN
+            ? (campaignById.get(row.resourceId) ?? null)
+            : null;
+      return { ...this.toResponse(row), resource };
+    });
+
     return {
-      savedResources: rows.map((row) => this.toResponse(row)),
+      items,
       total,
       page,
       limit,

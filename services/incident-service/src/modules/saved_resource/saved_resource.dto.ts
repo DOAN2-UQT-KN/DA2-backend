@@ -1,4 +1,6 @@
 import type { SavedResourceType } from "../../constants/status.enum";
+import type { CampaignResponse } from "../campaign/campaign.dto";
+import type { ReportDetailResponse } from "../report/report.dto";
 
 export interface SaveResourceBody {
   resourceId: string;
@@ -15,9 +17,14 @@ export interface SaveResourceResponse {
   deletedAt: Date | null;
 }
 
+/** Current resource payload when available (e.g. after save/toggle). */
+export interface SaveResourceWithResourceResponse extends SaveResourceResponse {
+  resource: ReportDetailResponse | CampaignResponse | null;
+}
+
 /** OpenAPI: `data` for POST /incident/saved-resources/save */
 export interface SaveResourceEnvelopeData {
-  savedResource: SaveResourceResponse;
+  saved_resource: SaveResourceWithResourceResponse;
 }
 
 /** Query for GET /incident/saved-resources (current user’s saved list). */
@@ -30,8 +37,12 @@ export interface SavedResourceListQuery {
   sortOrder?: "asc" | "desc";
 }
 
-export interface PaginatedSavedResourcesResponse {
-  savedResources: SaveResourceResponse[];
+export interface SavedListItem extends SaveResourceResponse {
+  resource: ReportDetailResponse | CampaignResponse | null;
+}
+
+export interface PaginatedSavedResourcesList {
+  items: SavedListItem[];
   total: number;
   page: number;
   limit: number;
@@ -39,4 +50,6 @@ export interface PaginatedSavedResourcesResponse {
 }
 
 /** OpenAPI: `data` for GET /incident/saved-resources */
-export type SavedResourcesListEnvelopeData = PaginatedSavedResourcesResponse;
+export interface SavedResourcesListEnvelopeData {
+  saved_resource: PaginatedSavedResourcesList;
+}
