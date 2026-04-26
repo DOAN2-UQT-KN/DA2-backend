@@ -255,6 +255,26 @@ export class CampaignService {
     return undefined;
   }
 
+  private async withCampaignListRequestStatus(
+    campaigns: CampaignResponse[],
+    viewerUserId: string,
+  ): Promise<CampaignResponse[]> {
+    if (campaigns.length === 0) {
+      return campaigns;
+    }
+    const statusByCampaignId =
+      await campaignJoiningRequestRepository.findLatestStatusByCampaignForVolunteer(
+        viewerUserId,
+        campaigns.map((c) => c.id),
+      );
+    return campaigns.map((campaign) => {
+      const requestStatus = this.joinRequestStatusForCampaignDetail(
+        statusByCampaignId.get(campaign.id),
+      );
+      return requestStatus !== undefined ? { ...campaign, requestStatus } : campaign;
+    });
+  }
+
   async createCampaign(
     userId: string,
     request: CreateCampaignRequest,
@@ -462,11 +482,16 @@ export class CampaignService {
       campaigns,
       viewerUserId,
     );
+    const enriched = await this.enrichCampaignsForGet(
+      campaignsWithVotes,
+      viewerUserId,
+    );
+    const campaignsWithRequestStatus =
+      viewerUserId != null && viewerUserId !== ""
+        ? await this.withCampaignListRequestStatus(enriched, viewerUserId)
+        : enriched;
     return {
-      campaigns: await this.enrichCampaignsForGet(
-        campaignsWithVotes,
-        viewerUserId,
-      ),
+      campaigns: campaignsWithRequestStatus,
       total,
       page,
       limit,

@@ -62,6 +62,35 @@ export class CampaignJoiningRequestRepository {
         });
     }
 
+    /**
+     * Latest join-request status per campaign for this volunteer (by `updatedAt` desc).
+     * Used to attach `request_status` on campaign list responses without N+1 queries.
+     */
+    async findLatestStatusByCampaignForVolunteer(
+        volunteerId: string,
+        campaignIds: string[],
+    ): Promise<Map<string, number>> {
+        const map = new Map<string, number>();
+        if (campaignIds.length === 0) {
+            return map;
+        }
+        const rows = await this.prisma.campaignJoiningRequest.findMany({
+            where: {
+                volunteerId,
+                campaignId: { in: campaignIds },
+                deletedAt: null,
+            },
+            orderBy: { updatedAt: "desc" },
+            select: { campaignId: true, status: true },
+        });
+        for (const row of rows) {
+            if (row.campaignId != null && !map.has(row.campaignId)) {
+                map.set(row.campaignId, row.status);
+            }
+        }
+        return map;
+    }
+
     async findByCampaignId(campaignId: string) {
         return this.prisma.campaignJoiningRequest.findMany({
             where: { campaignId, deletedAt: null },
