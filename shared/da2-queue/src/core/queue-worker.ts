@@ -53,6 +53,14 @@ export abstract class QueueWorker {
   protected abstract readonly jobType: string;
 
   /**
+   * Override when one physical queue carries multiple logical `jobType` values
+   * (same SQS queue, several envelope types).
+   */
+  protected jobTypeMatches(messageJobType: string): boolean {
+    return messageJobType === this.jobType;
+  }
+
+  /**
    * Process a validated message body for this worker's jobType.
    * Called after markProcessing succeeds; throw on failure to trigger retry.
    */
@@ -114,7 +122,7 @@ export abstract class QueueWorker {
     try {
       if (!loose) throw new Error("Invalid JSON or missing jobId/jobType");
 
-      if (loose.jobType !== this.jobType) {
+      if (!this.jobTypeMatches(loose.jobType)) {
         console.error(
           `[${this.constructor.name} ${this.queue.queueUrl}] unexpected jobType ${loose.jobType} on ${msg.messageId}, expected ${this.jobType}`,
         );
