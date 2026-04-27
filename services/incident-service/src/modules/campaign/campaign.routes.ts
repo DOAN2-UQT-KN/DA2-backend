@@ -19,9 +19,11 @@ router.post("/", authenticate, campaignController.createCampaign);
  * @access  Private
  * @query   search?, status?, createdBy?, managerId?, page, limit, sortBy (createdAt|updatedAt|title), sortOrder (asc|desc)
  */
-router.get("/", 
-  // authenticate, 
-  campaignController.getCampaigns);
+router.get(
+  "/",
+  // authenticate,
+  campaignController.getCampaigns,
+);
 
 /**
  * @route   GET /api/v1/campaigns/by-ids
@@ -123,32 +125,21 @@ router.get("/:id", authenticate, campaignController.getCampaignById);
  * @desc    Admin reject draft campaign (status → inactive; linked reports return to pending)
  * @access  Private (Admin only)
  */
-router.put(
-  "/:id/reject",
-  authenticate,
-  campaignController.adminRejectCampaign,
-);
+router.put("/:id/reject", authenticate, campaignController.adminRejectCampaign);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/verify
  * @desc    Admin-approve campaign (status → active, is_verify)
  * @access  Private (Admin only)
  */
-router.put(
-  "/:id/verify",
-  authenticate,
-  campaignController.adminVerifyCampaign,
-);
+router.put("/:id/verify", authenticate, campaignController.adminVerifyCampaign);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/mark-done
  * @desc    Mark campaign completed (admin). Must be active; green points TBD.
  * @access  Private (Admin only)
  */
-router.put(
-  "/:id/mark-done",
-  campaignController.adminMarkCampaignDone,
-);
+router.put("/:id/mark-done", authenticate, campaignController.markCampaignDone);
 
 /**
  * @route   PUT /api/v1/campaigns/:id
@@ -191,7 +182,11 @@ router.post(
  * @access  Private
  * @query   userId?, page, limit, sortBy (assignedAt|userId|createdAt), sortOrder (asc|desc)
  */
-router.get("/:id/managers", authenticate, campaignController.getCampaignManagers);
+router.get(
+  "/:id/managers",
+  authenticate,
+  campaignController.getCampaignManagers,
+);
 
 /**
  * @route   POST /api/v1/campaigns/:id/tasks
@@ -217,9 +212,9 @@ router.get("/:id/tasks", authenticate, campaignController.getCampaignTasks);
  * @body    { campaignId }
  */
 router.post(
-    "/volunteers/join-requests",
-    authenticate,
-    campaignController.createJoinRequest,
+  "/volunteers/join-requests",
+  authenticate,
+  campaignController.createJoinRequest,
 );
 
 /**
@@ -229,9 +224,9 @@ router.post(
  * @query   campaignId (required), status?, volunteerId?, page, limit, sortBy (createdAt|updatedAt), sortOrder (asc|desc)
  */
 router.get(
-    "/volunteers/join-requests",
-    authenticate,
-    campaignController.getJoinRequests,
+  "/volunteers/join-requests",
+  authenticate,
+  campaignController.getJoinRequests,
 );
 
 /**
@@ -241,9 +236,9 @@ router.get(
  * @query   campaignId?, status?, page, limit, sortBy (createdAt|updatedAt), sortOrder (asc|desc)
  */
 router.get(
-    "/volunteers/join-requests/my",
-    authenticate,
-    campaignController.getMyJoinRequests,
+  "/volunteers/join-requests/my",
+  authenticate,
+  campaignController.getMyJoinRequests,
 );
 
 /**
@@ -253,9 +248,9 @@ router.get(
  * @body    { requestId, approved }
  */
 router.put(
-    "/volunteers/join-requests/process",
-    authenticate,
-    campaignController.processJoinRequest,
+  "/volunteers/join-requests/process",
+  authenticate,
+  campaignController.processJoinRequest,
 );
 
 /**
@@ -265,9 +260,9 @@ router.put(
  * @body    { requestId }
  */
 router.delete(
-    "/volunteers/join-requests/cancel",
-    authenticate,
-    campaignController.cancelJoinRequest,
+  "/volunteers/join-requests/cancel",
+  authenticate,
+  campaignController.cancelJoinRequest,
 );
 
 /**
@@ -277,9 +272,9 @@ router.delete(
  * @query   campaignId (required), volunteerId?, page, limit, sortBy (createdAt|updatedAt), sortOrder (asc|desc)
  */
 router.get(
-    "/volunteers/approved",
-    authenticate,
-    campaignController.getApprovedVolunteers,
+  "/volunteers/approved",
+  authenticate,
+  campaignController.getApprovedVolunteers,
 );
 
 // =====================

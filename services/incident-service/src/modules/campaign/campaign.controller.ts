@@ -451,7 +451,7 @@ export class CampaignController {
   /**
    * Mark campaign as completed (admin only). Campaign must already be active.
    */
-  adminMarkCampaignDone = [
+  markCampaignDone = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
 
     async (req: Request, res: Response): Promise<void> => {
@@ -468,17 +468,17 @@ export class CampaignController {
           return sendError(res, HTTP_STATUS.UNAUTHORIZED);
         }
 
-        const role = req.user?.role?.toLowerCase();
-        if (role !== "admin") {
-          return sendError(
-            res,
-            HTTP_STATUS.FORBIDDEN.withMessage(
-              "Only admin can mark a campaign as done",
-            ),
-          );
-        }
+        // const role = req.user?.role?.toLowerCase();
+        // if (role !== "admin") {
+        //   return sendError(
+        //     res,
+        //     HTTP_STATUS.FORBIDDEN.withMessage(
+        //       "Only admin can mark a campaign as done",
+        //     ),
+        //   );
+        // }
 
-        const campaign = await campaignService.adminMarkCampaignDone(
+        const campaign = await campaignService.markCampaignDone(
           req.params.id,
           userId,
         );
@@ -1304,7 +1304,10 @@ export class CampaignController {
       .optional()
       .isInt({ min: 1, max: 3 })
       .withMessage("priority must be 1 (HIGH), 2 (MEDIUM), or 3 (LOW)"),
-    body("result").optional().isObject().withMessage("result must be an object"),
+    body("result")
+      .optional()
+      .isObject()
+      .withMessage("result must be an object"),
     body("result.description").optional().isString(),
     body("result.file").optional().isArray(),
     body("result.file.*").optional().isString().trim(),
@@ -1533,7 +1536,6 @@ export class CampaignController {
       }
     },
   ];
-
 }
 
 export const campaignController = new CampaignController();

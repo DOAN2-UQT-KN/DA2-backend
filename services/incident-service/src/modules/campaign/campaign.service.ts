@@ -20,10 +20,7 @@ import {
   CreateCampaignRequest,
   UpdateCampaignRequest,
 } from "./campaign.dto";
-import {
-  CampaignWithReports,
-  toCampaignResponse,
-} from "./campaign.entity";
+import { CampaignWithReports, toCampaignResponse } from "./campaign.entity";
 import { savedResourceRepository } from "../saved_resource/saved_resource.repository";
 import { defaultResourceVoteSummary } from "../vote/vote.dto";
 import { voteService } from "../vote/vote.service";
@@ -54,7 +51,9 @@ export class CampaignService {
     const campaignIds = campaigns.map((campaign) => campaign.id);
     const organizationIds = [
       ...new Set(
-        campaigns.map((c) => c.organizationId).filter((id): id is string => Boolean(id)),
+        campaigns
+          .map((c) => c.organizationId)
+          .filter((id): id is string => Boolean(id)),
       ),
     ];
     const managerIds = [
@@ -66,9 +65,7 @@ export class CampaignService {
     ];
 
     const [organizations, reportsByCampaignId] = await Promise.all([
-      organizationRepository
-        .findManyByIds(organizationIds)
-        .catch(() => []),
+      organizationRepository.findManyByIds(organizationIds).catch(() => []),
       this.getReportsByCampaignIds(campaignIds, viewerUserId),
     ]);
 
@@ -192,12 +189,7 @@ export class CampaignService {
     ]);
     const greenPoints = tier?.greenPoints ?? 0;
     const maxMembers = tier?.maxVolunteers ?? null;
-    return toCampaignResponse(
-      entity,
-      greenPoints,
-      currentMembers,
-      maxMembers,
-    );
+    return toCampaignResponse(entity, greenPoints, currentMembers, maxMembers);
   }
 
   private async withCampaignVotes(
@@ -224,8 +216,7 @@ export class CampaignService {
     ]);
     return campaigns.map((c) => ({
       ...c,
-      votes:
-        map.get(c.id) ?? defaultResourceVoteSummary(viewerUserId ?? null),
+      votes: map.get(c.id) ?? defaultResourceVoteSummary(viewerUserId ?? null),
       saved: viewerUserId != null ? savedIds.has(c.id) : null,
     }));
   }
@@ -271,7 +262,9 @@ export class CampaignService {
       const requestStatus = this.joinRequestStatusForCampaignDetail(
         statusByCampaignId.get(campaign.id),
       );
-      return requestStatus !== undefined ? { ...campaign, requestStatus } : campaign;
+      return requestStatus !== undefined
+        ? { ...campaign, requestStatus }
+        : campaign;
     });
   }
 
@@ -383,9 +376,7 @@ export class CampaignService {
     const requestStatus = this.joinRequestStatusForCampaignDetail(
       latestJoin?.status,
     );
-    return requestStatus !== undefined
-      ? { ...base, requestStatus }
-      : base;
+    return requestStatus !== undefined ? { ...base, requestStatus } : base;
   }
 
   /** campaignIds limited to 100 UUIDs at the controller. */
@@ -571,8 +562,8 @@ export class CampaignService {
         pageEntities.map((e) => e.id),
       );
 
-    const campaignsRaw: CampaignWithAwaitingSubmissionCount[] = pageEntities.map(
-      (entity) => {
+    const campaignsRaw: CampaignWithAwaitingSubmissionCount[] =
+      pageEntities.map((entity) => {
         const base = toCampaignResponse(
           entity,
           greenByLevel.get(entity.difficulty) ?? 0,
@@ -583,8 +574,7 @@ export class CampaignService {
           ...base,
           awaitingSubmissionCount: countById.get(entity.id) ?? 0,
         };
-      },
-    );
+      });
 
     const campaignsWithVotes = await this.withCampaignVotes(
       campaignsRaw,
@@ -844,9 +834,9 @@ export class CampaignService {
   }
 
   /** Admin-only: mark campaign completed and queue green points for approved volunteers. */
-  async adminMarkCampaignDone(
+  async markCampaignDone(
     id: string,
-    adminUserId: string,
+    userId: string,
     viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
     const existing = await campaignRepository.findById(id);
@@ -855,7 +845,7 @@ export class CampaignService {
     }
 
     if (existing.status === GlobalStatus._STATUS_COMPLETED) {
-      return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
+      return this.toResponseWithVotes(existing, viewerUserId ?? userId);
     }
 
     if (existing.status !== GlobalStatus._STATUS_ACTIVE) {
@@ -897,14 +887,14 @@ export class CampaignService {
           where: { id },
           data: {
             status: GlobalStatus._STATUS_COMPLETED,
-            updatedBy: adminUserId,
+            updatedBy: userId,
           },
         });
         await tx.report.updateMany({
           where: { campaignId: id, deletedAt: null },
           data: {
             status: ReportStatus._STATUS_COMPLETED,
-            updatedBy: adminUserId,
+            updatedBy: userId,
           },
         });
       },
@@ -926,7 +916,7 @@ export class CampaignService {
               where: { id },
               data: {
                 status: GlobalStatus._STATUS_ACTIVE,
-                updatedBy: adminUserId,
+                updatedBy: userId,
               },
             });
             await tx.report.updateMany({
@@ -937,7 +927,7 @@ export class CampaignService {
               },
               data: {
                 status: ReportStatus._STATUS_INPROCESS,
-                updatedBy: adminUserId,
+                updatedBy: userId,
               },
             });
           },
@@ -953,7 +943,7 @@ export class CampaignService {
     if (!updated) {
       throw new Error("Campaign not found");
     }
-    return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
+    return this.toResponseWithVotes(updated, viewerUserId ?? userId);
   }
 
   async deleteCampaign(id: string, userId: string): Promise<void> {
