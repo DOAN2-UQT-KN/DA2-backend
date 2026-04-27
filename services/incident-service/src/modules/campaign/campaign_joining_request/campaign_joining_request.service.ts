@@ -283,7 +283,7 @@ export class CampaignJoiningRequestService {
    */
   async getApprovedVolunteersForManager(
     campaignId: string,
-    managerId: string,
+    // managerId: string,
     query: GetApprovedVolunteersQuery,
   ): Promise<{
     volunteers: JoinRequestResponse[];

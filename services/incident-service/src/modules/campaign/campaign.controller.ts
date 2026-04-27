@@ -24,7 +24,7 @@ import { normalizeQueryUuidList } from "../../utils/query-uuid-list";
 const CAMPAIGN_BATCH_QUERY_MAX_IDS = 100;
 
 export class CampaignController {
-  constructor() { }
+  constructor() {}
 
   createCampaign = [
     body("organizationId")
@@ -66,7 +66,9 @@ export class CampaignController {
       .withMessage("radiusKm must be a non-negative number"),
     body("difficulty")
       .isInt({ min: 1 })
-      .withMessage("difficulty must be a positive integer (reward-service tier)"),
+      .withMessage(
+        "difficulty must be a positive integer (reward-service tier)",
+      ),
     body("reportIds")
       .optional()
       .isArray()
@@ -188,10 +190,7 @@ export class CampaignController {
           sortOrder: req.query.sortOrder as CampaignListQuery["sortOrder"],
         };
 
-        const result = await campaignService.getCampaigns(
-          q,
-          req.user?.userId,
-        );
+        const result = await campaignService.getCampaigns(q, req.user?.userId);
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {
         console.error("Get campaigns error:", error);
@@ -417,7 +416,9 @@ export class CampaignController {
         if (role !== "admin") {
           return sendError(
             res,
-            HTTP_STATUS.FORBIDDEN.withMessage("Only admin can access this list"),
+            HTTP_STATUS.FORBIDDEN.withMessage(
+              "Only admin can access this list",
+            ),
           );
         }
 
@@ -428,9 +429,10 @@ export class CampaignController {
           limit: req.query.limit
             ? parseInt(String(req.query.limit), 10)
             : undefined,
-          sortBy: req.query.sortBy as CampaignMultiSubmissionReviewListQuery["sortBy"],
-          sortOrder:
-            req.query.sortOrder as CampaignMultiSubmissionReviewListQuery["sortOrder"],
+          sortBy: req.query
+            .sortBy as CampaignMultiSubmissionReviewListQuery["sortBy"],
+          sortOrder: req.query
+            .sortOrder as CampaignMultiSubmissionReviewListQuery["sortOrder"],
         };
 
         const result =
@@ -558,7 +560,9 @@ export class CampaignController {
     body("difficulty")
       .optional()
       .isInt({ min: 1 })
-      .withMessage("difficulty must be a positive integer (reward-service tier)"),
+      .withMessage(
+        "difficulty must be a positive integer (reward-service tier)",
+      ),
     body("reportIds")
       .optional()
       .isArray()
@@ -860,11 +864,10 @@ export class CampaignController {
           sortOrder: req.query.sortOrder as MyJoinRequestsQuery["sortOrder"],
         };
 
-        const result =
-          await campaignJoiningRequestService.getMyJoinRequests(
-            volunteerId,
-            q,
-          );
+        const result = await campaignJoiningRequestService.getMyJoinRequests(
+          volunteerId,
+          q,
+        );
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {
         console.error("Get my join requests error:", error);
@@ -898,12 +901,11 @@ export class CampaignController {
           ? JoinRequestStatus._STATUS_APPROVED
           : JoinRequestStatus._STATUS_REJECTED;
 
-        const result =
-          await campaignJoiningRequestService.processJoinRequest(
-            req.body.requestId,
-            managerId,
-            status,
-          );
+        const result = await campaignJoiningRequestService.processJoinRequest(
+          req.body.requestId,
+          managerId,
+          status,
+        );
         if (result.type === "approved") {
           sendSuccess(res, HTTP_STATUS.OK, { joinRequest: result.joinRequest });
         } else {
@@ -924,7 +926,9 @@ export class CampaignController {
           if (error.message.includes("already processed")) {
             return sendError(
               res,
-              HTTP_STATUS.CONFLICT.withMessage("Join request already processed"),
+              HTTP_STATUS.CONFLICT.withMessage(
+                "Join request already processed",
+              ),
             );
           }
           if (error.message.includes("capacity exceeded")) {
@@ -940,9 +944,7 @@ export class CampaignController {
           ) {
             return sendError(
               res,
-              HTTP_STATUS.INTERNAL_SERVER_ERROR.withMessage(
-                error.message,
-              ),
+              HTTP_STATUS.INTERNAL_SERVER_ERROR.withMessage(error.message),
             );
           }
         }
@@ -991,7 +993,9 @@ export class CampaignController {
           if (error.message.includes("only cancel pending")) {
             return sendError(
               res,
-              HTTP_STATUS.CONFLICT.withMessage("Can only cancel pending requests"),
+              HTTP_STATUS.CONFLICT.withMessage(
+                "Can only cancel pending requests",
+              ),
             );
           }
         }
@@ -1041,14 +1045,14 @@ export class CampaignController {
             ? parseInt(String(req.query.limit), 10)
             : undefined,
           sortBy: req.query.sortBy as GetApprovedVolunteersQuery["sortBy"],
-          sortOrder:
-            req.query.sortOrder as GetApprovedVolunteersQuery["sortOrder"],
+          sortOrder: req.query
+            .sortOrder as GetApprovedVolunteersQuery["sortOrder"],
         };
 
         const result =
           await campaignJoiningRequestService.getApprovedVolunteersForManager(
             q.campaignId,
-            managerId,
+            // managerId,
             q,
           );
         sendSuccess(res, HTTP_STATUS.OK, result);
@@ -1166,8 +1170,8 @@ export class CampaignController {
             ? parseInt(String(req.query.limit), 10)
             : undefined,
           sortBy: req.query.sortBy as CampaignManagersListQuery["sortBy"],
-          sortOrder:
-            req.query.sortOrder as CampaignManagersListQuery["sortOrder"],
+          sortOrder: req.query
+            .sortOrder as CampaignManagersListQuery["sortOrder"],
         };
 
         const result = await campaignManagerService.listManagers(
@@ -1495,10 +1499,7 @@ export class CampaignController {
       }
 
       const r = req.body?.result as Record<string, unknown> | undefined;
-      if (
-        r == null ||
-        (r.description === undefined && r.file === undefined)
-      ) {
+      if (r == null || (r.description === undefined && r.file === undefined)) {
         return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
           errors: [
             {
@@ -1539,4 +1540,3 @@ export class CampaignController {
 }
 
 export const campaignController = new CampaignController();
-
