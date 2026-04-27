@@ -147,7 +147,6 @@ router.put(
  */
 router.put(
   "/:id/mark-done",
-  authenticate,
   campaignController.adminMarkCampaignDone,
 );
 

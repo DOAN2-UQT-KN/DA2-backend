@@ -502,6 +502,12 @@ export class CampaignController {
               HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
             );
           }
+          if (error.message.includes("Some tasks is not completed")) {
+            return sendError(
+              res,
+              HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
+            );
+          }
           if (error.message.includes("difficulty missing")) {
             return sendError(
               res,

@@ -864,6 +864,17 @@ export class CampaignService {
       );
     }
 
+    const incompleteTaskCount = await prisma.campaignTask.count({
+      where: {
+        campaignId: id,
+        deletedAt: null,
+        status: { not: GlobalStatus._STATUS_COMPLETED },
+      },
+    });
+    if (incompleteTaskCount > 0) {
+      throw new Error("Some tasks is not completed");
+    }
+
     const tier = await rewardServiceClient.getDifficultyByLevel(
       existing.difficulty,
     );
