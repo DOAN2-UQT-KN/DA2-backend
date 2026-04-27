@@ -11,6 +11,7 @@ export interface CreateTaskRequest {
   campaignId: string;
   title: string;
   description?: string;
+  scheduledDate?: string;
   scheduledTime?: string;
   priority?: number;
 }
@@ -19,6 +20,7 @@ export interface UpdateTaskRequest {
   title?: string;
   description?: string;
   status?: number;
+  scheduledDate?: string;
   scheduledTime?: string;
   priority?: number;
   result?: {
@@ -39,7 +41,8 @@ export interface TaskResponse {
   description: string | null;
   priority: number;
   status: number;
-  scheduledTime: Date | null;
+  scheduledDate: Date | null;
+  scheduledTime: string | null;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -88,9 +91,10 @@ export class CampaignTaskService {
       title: request.title,
       description: request.description,
       priority: request.priority ?? 2,
-      scheduledTime: request.scheduledTime
-        ? new Date(request.scheduledTime)
+      scheduledDate: request.scheduledDate
+        ? new Date(request.scheduledDate)
         : undefined,
+      scheduledTime: request.scheduledTime,
       createdBy: userId,
       status: TaskStatus._STATUS_TODO,
     });
@@ -167,6 +171,7 @@ export class CampaignTaskService {
       request.title !== undefined ||
       request.description !== undefined ||
       request.status !== undefined ||
+      request.scheduledDate !== undefined ||
       request.scheduledTime !== undefined ||
       request.priority !== undefined;
     const hasResultFieldUpdate =
@@ -199,10 +204,11 @@ export class CampaignTaskService {
       description: hasTaskFieldUpdate ? request.description : undefined,
       status: hasTaskFieldUpdate ? request.status : undefined,
       priority: hasTaskFieldUpdate ? request.priority : undefined,
-      scheduledTime:
-        hasTaskFieldUpdate && request.scheduledTime
-          ? new Date(request.scheduledTime)
+      scheduledDate:
+        hasTaskFieldUpdate && request.scheduledDate
+          ? new Date(request.scheduledDate)
           : undefined,
+      scheduledTime: hasTaskFieldUpdate ? request.scheduledTime : undefined,
     });
 
     return this.toTaskResponse(updated);
@@ -368,6 +374,7 @@ export class CampaignTaskService {
             description: a.campaignTask.description,
             priority: a.campaignTask.priority,
             status: a.campaignTask.status,
+            scheduledDate: a.campaignTask.scheduledDate,
             scheduledTime: a.campaignTask.scheduledTime,
             createdBy: a.campaignTask.createdBy,
             createdAt: a.campaignTask.createdAt,
@@ -499,6 +506,7 @@ export class CampaignTaskService {
       description: task.description,
       priority: task.priority,
       status: task.status,
+      scheduledDate: task.scheduledDate,
       scheduledTime: task.scheduledTime,
       createdBy: task.createdBy,
       createdAt: task.createdAt,

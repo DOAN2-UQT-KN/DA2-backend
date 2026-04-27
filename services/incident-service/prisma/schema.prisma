@@ -148,7 +148,8 @@ model CampaignTask {
 
   status Int @default(12)
 
-  scheduledTime DateTime? @map("scheduled_time")
+  scheduledDate DateTime? @map("scheduled_date")
+  scheduledTime String?   @map("scheduled_time") @db.VarChar(50)
 
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid

@@ -1199,10 +1199,15 @@ export class CampaignController {
       .optional()
       .isInt({ min: 1, max: 3 })
       .withMessage("priority must be 1 (HIGH), 2 (MEDIUM), or 3 (LOW)"),
-    body("scheduledTime")
+    body("scheduledDate")
       .optional()
       .isISO8601()
       .withMessage("Invalid date format"),
+    body("scheduledTime")
+      .optional()
+      .isString()
+      .withMessage("scheduledTime must be a string")
+      .trim(),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -1226,6 +1231,7 @@ export class CampaignController {
             req.body.priority !== undefined
               ? parseInt(String(req.body.priority), 10)
               : undefined,
+          scheduledDate: req.body.scheduledDate,
           scheduledTime: req.body.scheduledTime,
         });
         sendSuccess(res, HTTP_STATUS.CREATED, { task });
@@ -1296,10 +1302,15 @@ export class CampaignController {
     body("result.description").optional().isString(),
     body("result.file").optional().isArray(),
     body("result.file.*").optional().isString().trim(),
-    body("scheduledTime")
+    body("scheduledDate")
       .optional()
       .isISO8601()
       .withMessage("Invalid date format"),
+    body("scheduledTime")
+      .optional()
+      .isString()
+      .withMessage("scheduledTime must be a string")
+      .trim(),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -1320,6 +1331,7 @@ export class CampaignController {
           title?: string;
           description?: string;
           status?: number;
+          scheduledDate?: string;
           scheduledTime?: string;
           priority?: number;
           result?: {
@@ -1336,6 +1348,9 @@ export class CampaignController {
         }
         if (b.priority !== undefined) {
           updateData.priority = parseInt(String(b.priority), 10);
+        }
+        if (b.scheduledDate !== undefined) {
+          updateData.scheduledDate = b.scheduledDate as string;
         }
         if (b.scheduledTime !== undefined) {
           updateData.scheduledTime = b.scheduledTime as string;
