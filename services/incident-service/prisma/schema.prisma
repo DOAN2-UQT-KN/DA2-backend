@@ -144,6 +144,7 @@ model CampaignTask {
 
   title       String? @db.VarChar(200)
   description String?
+  priority    Int     @default(2)
 
   status Int @default(12)
 

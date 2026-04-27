@@ -1195,6 +1195,10 @@ export class CampaignController {
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
     body("title").notEmpty().withMessage("Title is required").trim(),
     body("description").optional().trim(),
+    body("priority")
+      .optional()
+      .isInt({ min: 1, max: 3 })
+      .withMessage("priority must be 1 (HIGH), 2 (MEDIUM), or 3 (LOW)"),
     body("scheduledTime")
       .optional()
       .isISO8601()
@@ -1218,6 +1222,10 @@ export class CampaignController {
           campaignId: req.params.id,
           title: req.body.title,
           description: req.body.description,
+          priority:
+            req.body.priority !== undefined
+              ? parseInt(String(req.body.priority), 10)
+              : undefined,
           scheduledTime: req.body.scheduledTime,
         });
         sendSuccess(res, HTTP_STATUS.CREATED, { task });
@@ -1280,6 +1288,10 @@ export class CampaignController {
     body("title").optional().trim(),
     body("description").optional().trim(),
     body("status").optional().isInt(),
+    body("priority")
+      .optional()
+      .isInt({ min: 1, max: 3 })
+      .withMessage("priority must be 1 (HIGH), 2 (MEDIUM), or 3 (LOW)"),
     body("result").optional().isObject().withMessage("result must be an object"),
     body("result.description").optional().isString(),
     body("result.file").optional().isArray(),
@@ -1309,6 +1321,7 @@ export class CampaignController {
           description?: string;
           status?: number;
           scheduledTime?: string;
+          priority?: number;
           result?: {
             description?: string;
             file?: string[];
@@ -1320,6 +1333,9 @@ export class CampaignController {
         }
         if (b.status !== undefined) {
           updateData.status = parseInt(String(b.status), 10);
+        }
+        if (b.priority !== undefined) {
+          updateData.priority = parseInt(String(b.priority), 10);
         }
         if (b.scheduledTime !== undefined) {
           updateData.scheduledTime = b.scheduledTime as string;

@@ -12,6 +12,7 @@ export interface CreateTaskRequest {
   title: string;
   description?: string;
   scheduledTime?: string;
+  priority?: number;
 }
 
 export interface UpdateTaskRequest {
@@ -19,6 +20,7 @@ export interface UpdateTaskRequest {
   description?: string;
   status?: number;
   scheduledTime?: string;
+  priority?: number;
   result?: {
     description?: string;
     file?: string[];
@@ -35,6 +37,7 @@ export interface TaskResponse {
   campaignId: string | null;
   title: string | null;
   description: string | null;
+  priority: number;
   status: number;
   scheduledTime: Date | null;
   createdBy: string | null;
@@ -84,6 +87,7 @@ export class CampaignTaskService {
       campaign: { connect: { id: request.campaignId } },
       title: request.title,
       description: request.description,
+      priority: request.priority ?? 2,
       scheduledTime: request.scheduledTime
         ? new Date(request.scheduledTime)
         : undefined,
@@ -163,7 +167,8 @@ export class CampaignTaskService {
       request.title !== undefined ||
       request.description !== undefined ||
       request.status !== undefined ||
-      request.scheduledTime !== undefined;
+      request.scheduledTime !== undefined ||
+      request.priority !== undefined;
     const hasResultFieldUpdate =
       request.result !== undefined &&
       (request.result.description !== undefined ||
@@ -193,6 +198,7 @@ export class CampaignTaskService {
       title: hasTaskFieldUpdate ? request.title : undefined,
       description: hasTaskFieldUpdate ? request.description : undefined,
       status: hasTaskFieldUpdate ? request.status : undefined,
+      priority: hasTaskFieldUpdate ? request.priority : undefined,
       scheduledTime:
         hasTaskFieldUpdate && request.scheduledTime
           ? new Date(request.scheduledTime)
@@ -360,6 +366,7 @@ export class CampaignTaskService {
             campaignId: a.campaignTask.campaignId,
             title: a.campaignTask.title,
             description: a.campaignTask.description,
+            priority: a.campaignTask.priority,
             status: a.campaignTask.status,
             scheduledTime: a.campaignTask.scheduledTime,
             createdBy: a.campaignTask.createdBy,
@@ -490,6 +497,7 @@ export class CampaignTaskService {
       campaignId: task.campaignId,
       title: task.title,
       description: task.description,
+      priority: task.priority,
       status: task.status,
       scheduledTime: task.scheduledTime,
       createdBy: task.createdBy,

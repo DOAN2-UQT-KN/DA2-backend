@@ -197,7 +197,7 @@ router.get("/:id/managers", authenticate, campaignController.getCampaignManagers
 /**
  * @route   POST /api/v1/campaigns/:id/tasks
  * @access  Private
- * @body    { title, description?, scheduledTime? }
+ * @body    { title, description?, priority?: 1|2|3, scheduledTime? }
  */
 router.post("/:id/tasks", authenticate, campaignController.createTask);
 

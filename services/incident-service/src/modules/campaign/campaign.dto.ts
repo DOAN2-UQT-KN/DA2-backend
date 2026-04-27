@@ -220,6 +220,7 @@ export interface TaskStatusUpdateBody {
 export interface CreateCampaignTaskBody {
   title: string;
   description?: string;
+  priority?: 1 | 2 | 3;
   scheduledTime?: string;
 }
 
@@ -227,8 +228,9 @@ export interface UpdateCampaignTaskBody {
   title?: string;
   description?: string;
   status?: number;
+  priority?: 1 | 2 | 3;
   scheduledTime?: string;
-  result: {
+  result?: {
     description?: string;
     file?: string[];
   };
