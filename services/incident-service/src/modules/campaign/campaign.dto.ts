@@ -228,10 +228,6 @@ export interface UpdateCampaignTaskBody {
   description?: string;
   status?: number;
   scheduledTime?: string;
-}
-
-/** PUT /campaigns/tasks/:taskId/result — at least one of description or file should be sent. */
-export interface UpdateCampaignTaskResultBody {
   result: {
     description?: string;
     file?: string[];

@@ -19,6 +19,10 @@ export interface UpdateTaskRequest {
   description?: string;
   status?: number;
   scheduledTime?: string;
+  result?: {
+    description?: string;
+    file?: string[];
+  };
 }
 
 export interface CampaignTaskResultResponse {
@@ -155,7 +159,25 @@ export class CampaignTaskService {
       task.campaignId,
       userId,
     );
-    if (!canManage) {
+    const hasTaskFieldUpdate =
+      request.title !== undefined ||
+      request.description !== undefined ||
+      request.status !== undefined ||
+      request.scheduledTime !== undefined;
+    const hasResultFieldUpdate =
+      request.result !== undefined &&
+      (request.result.description !== undefined ||
+        request.result.file !== undefined);
+
+    if (!hasTaskFieldUpdate && !hasResultFieldUpdate) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage(
+          "Provide at least one task field or result field to update",
+        ),
+      );
+    }
+
+    if (hasTaskFieldUpdate && !canManage) {
       throw new HttpError(
         HTTP_STATUS.FORBIDDEN.withMessage(
           "Only the campaign creator or campaign managers can update tasks",
@@ -163,13 +185,18 @@ export class CampaignTaskService {
       );
     }
 
+    if (hasResultFieldUpdate) {
+      await this.updateTaskResult(taskId, task.campaignId, userId, request.result!);
+    }
+
     const updated = await campaignTaskRepository.update(taskId, {
-      title: request.title,
-      description: request.description,
-      status: request.status,
-      scheduledTime: request.scheduledTime
-        ? new Date(request.scheduledTime)
-        : undefined,
+      title: hasTaskFieldUpdate ? request.title : undefined,
+      description: hasTaskFieldUpdate ? request.description : undefined,
+      status: hasTaskFieldUpdate ? request.status : undefined,
+      scheduledTime:
+        hasTaskFieldUpdate && request.scheduledTime
+          ? new Date(request.scheduledTime)
+          : undefined,
     });
 
     return this.toTaskResponse(updated);
@@ -344,28 +371,18 @@ export class CampaignTaskService {
     }));
   }
 
-  async updateCampaignTaskResult(
+  private async updateTaskResult(
     taskId: string,
+    campaignId: string,
     userId: string,
     request: { description?: string; file?: string[] },
-  ): Promise<TaskResponse> {
-    const task = await campaignTaskRepository.findById(taskId);
-    if (!task) {
-      throw new HttpError(HTTP_STATUS.TASK_NOT_FOUND);
-    }
-
-    if (!task.campaignId) {
-      throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage("Task has no associated campaign"),
-      );
-    }
-
+  ): Promise<void> {
     const assignment = await campaignTaskRepository.findAssignment(
       taskId,
       userId,
     );
     const canManage = await campaignManagerService.canManageCampaign(
-      task.campaignId,
+      campaignId,
       userId,
     );
     if (!assignment && !canManage) {
@@ -423,12 +440,6 @@ export class CampaignTaskService {
         }
       }
     });
-
-    const updated = await campaignTaskRepository.findById(taskId);
-    if (!updated) {
-      throw new HttpError(HTTP_STATUS.TASK_NOT_FOUND);
-    }
-    return this.toTaskResponse(updated);
   }
 
   async updateTaskStatusByVolunteer(

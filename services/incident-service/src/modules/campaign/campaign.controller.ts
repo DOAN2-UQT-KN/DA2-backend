@@ -1280,6 +1280,10 @@ export class CampaignController {
     body("title").optional().trim(),
     body("description").optional().trim(),
     body("status").optional().isInt(),
+    body("result").optional().isObject().withMessage("result must be an object"),
+    body("result.description").optional().isString(),
+    body("result.file").optional().isArray(),
+    body("result.file.*").optional().isString().trim(),
     body("scheduledTime")
       .optional()
       .isISO8601()
@@ -1305,6 +1309,10 @@ export class CampaignController {
           description?: string;
           status?: number;
           scheduledTime?: string;
+          result?: {
+            description?: string;
+            file?: string[];
+          };
         } = {};
         if (b.title !== undefined) updateData.title = b.title as string;
         if (b.description !== undefined) {
@@ -1315,6 +1323,16 @@ export class CampaignController {
         }
         if (b.scheduledTime !== undefined) {
           updateData.scheduledTime = b.scheduledTime as string;
+        }
+        if (b.result !== undefined) {
+          const result = b.result as Record<string, unknown>;
+          updateData.result = {};
+          if (result.description !== undefined) {
+            updateData.result.description = result.description as string;
+          }
+          if (result.file !== undefined) {
+            updateData.result.file = result.file as string[];
+          }
         }
 
         const task = await campaignTaskService.updateTask(
@@ -1479,64 +1497,6 @@ export class CampaignController {
     },
   ];
 
-  updateCampaignTaskResult = [
-    param("taskId").isUUID().withMessage("Task ID must be a valid UUID"),
-    body("result")
-      .exists()
-      .withMessage("result is required")
-      .isObject()
-      .withMessage("result must be an object"),
-    body("result.description").optional().isString(),
-    body("result.file").optional().isArray(),
-    body("result.file.*").optional().isString().trim(),
-
-    async (req: Request, res: Response): Promise<void> => {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
-          errors: errors.array(),
-        });
-      }
-
-      const r = req.body?.result as Record<string, unknown> | undefined;
-      if (r == null || (r.description === undefined && r.file === undefined)) {
-        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
-          errors: [
-            {
-              msg: "Provide result.description and/or result.file",
-              path: "result",
-            },
-          ],
-        });
-      }
-
-      try {
-        const userId = req.user?.userId;
-        if (!userId) {
-          return sendError(res, HTTP_STATUS.UNAUTHORIZED);
-        }
-
-        const payload: { description?: string; file?: string[] } = {};
-        if (r.description !== undefined) {
-          payload.description = r.description as string;
-        }
-        if (r.file !== undefined) {
-          payload.file = r.file as string[];
-        }
-
-        const task = await campaignTaskService.updateCampaignTaskResult(
-          req.params.taskId,
-          userId,
-          payload,
-        );
-        sendSuccess(res, HTTP_STATUS.OK, { task });
-      } catch (error) {
-        console.error("Update campaign task result error:", error);
-        if (sendHttpErrorResponse(res, error)) return;
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-      }
-    },
-  ];
 }
 
 export const campaignController = new CampaignController();
