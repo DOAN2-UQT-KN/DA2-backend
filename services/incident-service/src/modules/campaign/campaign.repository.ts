@@ -105,9 +105,13 @@ export class CampaignRepository {
 
     const where: Prisma.CampaignWhereInput = {
       deletedAt: null,
-      ...(filters.status !== undefined && !filters.isOwner ? { status: filters.status } : {}),
+      ...(filters.status !== undefined && !filters.isOwner
+        ? { status: filters.status }
+        : {}),
       ...(filters.createdBy ? { createdBy: filters.createdBy } : {}),
-      ...(filters.organizationId ? { organizationId: filters.organizationId } : {}),
+      ...(filters.organizationId
+        ? { organizationId: filters.organizationId }
+        : {}),
       ...(filters.search
         ? {
             title: {
@@ -202,6 +206,7 @@ export class CampaignRepository {
             },
           }
         : {}),
+      ...(filters.status ? { status: filters.status } : {}),
     };
 
     const orderBy: Prisma.CampaignOrderByWithRelationInput =
@@ -352,7 +357,6 @@ export class CampaignRepository {
       awaitingSubmissionCount: r._count.id,
     }));
   }
-
 }
 
 export const campaignRepository = new CampaignRepository();
