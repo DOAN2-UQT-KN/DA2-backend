@@ -82,9 +82,8 @@ export interface GiftListMeta {
 }
 
 /** OpenAPI / success envelope */
-export interface GiftsListEnvelopeData {
+export interface GiftsListEnvelopeData extends GiftListMeta {
   gifts: GiftResponse[];
-  meta: GiftListMeta;
 }
 
 export interface GiftOneEnvelopeData {
@@ -121,7 +120,6 @@ export interface MyGiftRedemptionsQuery {
   limit?: number;
 }
 
-export interface MyGiftRedemptionsEnvelopeData {
+export interface MyGiftRedemptionsEnvelopeData extends GiftListMeta {
   redemptions: GiftRedemptionListItemResponse[];
-  meta: GiftListMeta;
 }

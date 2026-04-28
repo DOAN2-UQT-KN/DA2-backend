@@ -6,7 +6,10 @@ import {
   sendHttpErrorResponse,
   sendSuccess,
 } from "../../constants/http-status";
-import { authenticate, tryAuthenticate } from "../../middleware/auth.middleware";
+import {
+  authenticate,
+  tryAuthenticate,
+} from "../../middleware/auth.middleware";
 import { requireAdmin } from "../../middleware/require-admin.middleware";
 import { giftService } from "./gift.service";
 
@@ -53,7 +56,11 @@ router.get(
     const isActiveRaw = req.query.isActive as string | undefined;
     const greenPointsMin = req.query.greenPointsMin as number | undefined;
     const greenPointsMax = req.query.greenPointsMax as number | undefined;
-    const sortBy = req.query.sortBy as "createdAt" | "name" | "greenPoints" | undefined;
+    const sortBy = req.query.sortBy as
+      | "createdAt"
+      | "name"
+      | "greenPoints"
+      | undefined;
     const sortOrder = req.query.sortOrder as "asc" | "desc" | undefined;
 
     const role = req.user?.role?.toLowerCase();
@@ -96,7 +103,10 @@ router.get(
 
       sendSuccess(res, HTTP_STATUS.OK, {
         gifts,
-        meta: { page, limit, total, totalPages },
+        page,
+        limit,
+        total,
+        totalPages,
       });
     } catch (error) {
       console.error("List gifts error:", error);

@@ -22,8 +22,15 @@ export interface UpdateDifficultyBody {
   greenPoints?: number;
 }
 
+export interface DifficultyListMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 /** OpenAPI / success envelope: list difficulties */
-export interface DifficultiesListEnvelopeData {
+export interface DifficultiesListEnvelopeData extends DifficultyListMeta {
   difficulties: DifficultyResponse[];
 }
 

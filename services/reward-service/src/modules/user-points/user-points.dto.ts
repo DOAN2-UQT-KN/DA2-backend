@@ -46,9 +46,8 @@ export interface PaginationMeta {
   totalPages: number;
 }
 
-export interface MyPointsTransactionsEnvelopeData {
+export interface MyPointsTransactionsEnvelopeData extends PaginationMeta {
   transactions: PointsTransactionResponse[];
-  meta: PaginationMeta;
 }
 
 export interface LeaderboardQuery {
@@ -68,9 +67,8 @@ export interface LeaderboardItemResponse {
   user: LeaderboardUser | null;
 }
 
-export interface LeaderboardEnvelopeData {
+export interface LeaderboardEnvelopeData extends PaginationMeta {
   leaderboard: LeaderboardItemResponse[];
-  meta: PaginationMeta;
 }
 
 export interface LeaderboardMeResponse {

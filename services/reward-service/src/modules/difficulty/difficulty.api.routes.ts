@@ -34,7 +34,10 @@ router.get(
 
       sendSuccess(res, HTTP_STATUS.OK, {
         difficulties,
-        meta: { page, limit, total, totalPages },
+        page,
+        limit,
+        total,
+        totalPages,
       });
     } catch (error) {
       console.error("List difficulties error:", error);

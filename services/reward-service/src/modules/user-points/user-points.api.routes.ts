@@ -75,7 +75,10 @@ router.get(
       const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
       sendSuccess(res, HTTP_STATUS.OK, {
         transactions,
-        meta: { page, limit, total, totalPages },
+        page,
+        limit,
+        total,
+        totalPages,
       });
     } catch (error) {
       console.error("Get transactions error:", error);
@@ -111,7 +114,10 @@ router.get(
 
       sendSuccess(res, HTTP_STATUS.OK, {
         leaderboard: rows,
-        meta: { page, limit, total, totalPages },
+        page,
+        limit,
+        total,
+        totalPages,
       });
     } catch (error) {
       console.error("Get leaderboard error:", error);
@@ -178,7 +184,10 @@ router.get(
       const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
       sendSuccess(res, HTTP_STATUS.OK, {
         redemptions,
-        meta: { page, limit, total, totalPages },
+        page,
+        limit,
+        total,
+        totalPages,
       });
     } catch (error) {
       console.error("Get redemptions error:", error);
