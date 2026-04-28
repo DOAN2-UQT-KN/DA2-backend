@@ -70,6 +70,8 @@ export interface GiftListQuery {
   isActive?: boolean;
   greenPointsMin?: number;
   greenPointsMax?: number;
+  sortBy?: "createdAt" | "name" | "greenPoints";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface GiftListMeta {

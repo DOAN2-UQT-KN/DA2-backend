@@ -12,6 +12,9 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
     query: "GiftListQuery",
     responseData: "GiftsListEnvelopeData",
   },
+  "GET /api/v1/gifts/:id": {
+    responseData: "GiftOneEnvelopeData",
+  },
   "POST /api/v1/gifts": {
     requestBody: "CreateGiftBody",
     responseData: "GiftOneEnvelopeData",
@@ -23,10 +26,21 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
   "POST /api/v1/gifts/:id/redeem": {
     responseData: "GiftRedemptionOneEnvelopeData",
   },
-  "GET /api/v1/gifts/me/green-points": {
-    responseData: "MyGreenPointsEnvelopeData",
+  "GET /api/v1/me/points": {
+    responseData: "MyPointsEnvelopeData",
   },
-  "GET /api/v1/gifts/me/redemptions": {
+  "GET /api/v1/me/points/transactions": {
+    query: "MyPointsTransactionsQuery",
+    responseData: "MyPointsTransactionsEnvelopeData",
+  },
+  "GET /api/v1/leaderboard": {
+    query: "LeaderboardQuery",
+    responseData: "LeaderboardEnvelopeData",
+  },
+  "GET /api/v1/leaderboard/me": {
+    responseData: "LeaderboardMeEnvelopeData",
+  },
+  "GET /api/v1/me/redemptions": {
     query: "MyGiftRedemptionsQuery",
     responseData: "MyGiftRedemptionsEnvelopeData",
   },
