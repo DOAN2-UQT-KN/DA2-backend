@@ -391,10 +391,10 @@ export class CampaignService {
     const byId = new Map(rows.map((row) => [row.id, row]));
     const difficulties = await rewardServiceClient.getDifficulties();
     const greenByLevel = new Map(
-      difficulties.map((d) => [d.level, d.greenPoints]),
+      difficulties?.map((d) => [d.level, d.greenPoints]),
     );
     const maxByLevel = new Map(
-      difficulties.map((d) => [d.level, d.maxVolunteers]),
+      difficulties?.map((d) => [d.level, d.maxVolunteers]),
     );
     const resolved = campaignIds
       .map((id) => byId.get(id))
@@ -435,10 +435,10 @@ export class CampaignService {
 
     const difficulties = await rewardServiceClient.getDifficulties();
     const greenByLevel = new Map(
-      difficulties.map((d) => [d.level, d.greenPoints]),
+      difficulties?.map((d) => [d.level, d.greenPoints]),
     );
     const maxByLevel = new Map(
-      difficulties.map((d) => [d.level, d.maxVolunteers]),
+      difficulties?.map((d) => [d.level, d.maxVolunteers]),
     );
 
     let difficultyLevels: number[] | undefined;
@@ -595,10 +595,10 @@ export class CampaignService {
 
     const difficulties = await rewardServiceClient.getDifficulties();
     const greenByLevel = new Map(
-      difficulties.map((d) => [d.level, d.greenPoints]),
+      difficulties?.map((d) => [d.level, d.greenPoints]),
     );
     const maxByLevel = new Map(
-      difficulties.map((d) => [d.level, d.maxVolunteers]),
+      difficulties?.map((d) => [d.level, d.maxVolunteers]),
     );
     const pageEntities = pageIds
       .map((id) => byId.get(id))

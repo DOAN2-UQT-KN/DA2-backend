@@ -13,6 +13,28 @@ interface SuccessEnvelope<T> {
   data?: T;
 }
 
+function readDifficultiesFromResponse(data: unknown): RewardDifficulty[] {
+  if (!data || typeof data !== "object") {
+    return [];
+  }
+  const root = data as Record<string, unknown>;
+  if (root.success === false) {
+    return [];
+  }
+  const inner = root.data;
+  if (inner && typeof inner === "object") {
+    const innerDifficulties = (inner as { difficulties?: unknown }).difficulties;
+    if (Array.isArray(innerDifficulties)) {
+      return innerDifficulties as RewardDifficulty[];
+    }
+  }
+  const topDifficulties = root.difficulties;
+  if (Array.isArray(topDifficulties)) {
+    return topDifficulties as RewardDifficulty[];
+  }
+  return [];
+}
+
 export class RewardServiceClient {
   private getClient(): AxiosInstance {
     const baseURL = process.env.REWARD_SERVICE_URL;
@@ -35,10 +57,7 @@ export class RewardServiceClient {
       const { data } = await client.get<
         SuccessEnvelope<{ difficulties: RewardDifficulty[] }>
       >("/internal/v1/difficulties");
-      if (!data?.success || !data.data?.difficulties) {
-        return [];
-      }
-      return data.data.difficulties;
+      return readDifficultiesFromResponse(data);
     } catch {
       return [];
     }
