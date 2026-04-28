@@ -118,6 +118,8 @@ export interface MyGreenPointsEnvelopeData {
 export interface MyGiftRedemptionsQuery {
   page?: number;
   limit?: number;
+  sortBy?: "createdAt" | "greenPointsSpent";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface MyGiftRedemptionsEnvelopeData extends GiftListMeta {

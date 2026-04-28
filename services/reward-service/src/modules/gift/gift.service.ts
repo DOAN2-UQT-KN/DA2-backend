@@ -102,6 +102,8 @@ export class GiftService {
     userId: string,
     page: number,
     limit: number,
+    sortBy: "createdAt" | "greenPointsSpent" = "createdAt",
+    sortOrder: "asc" | "desc" = "desc",
   ): Promise<{ redemptions: GiftRedemptionListItemResponse[]; total: number }> {
     const skip = (page - 1) * limit;
     const where = { userId };
@@ -109,7 +111,7 @@ export class GiftService {
     const [rows, total] = await Promise.all([
       prisma.giftRedemption.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: { [sortBy]: sortOrder },
         skip,
         take: limit,
         include: { gift: true },

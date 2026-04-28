@@ -157,6 +157,8 @@ router.get(
   authenticate,
   query("page").optional().isInt({ min: 1 }).toInt(),
   query("limit").optional().isInt({ min: 1, max: 100 }).toInt(),
+  query("sortBy").optional().isIn(["createdAt", "greenPointsSpent"]),
+  query("sortOrder").optional().isIn(["asc", "desc"]),
   async (req, res): Promise<void> => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -174,12 +176,16 @@ router.get(
 
     const page = (req.query.page as number | undefined) ?? 1;
     const limit = (req.query.limit as number | undefined) ?? 20;
+    const sortBy = (req.query.sortBy as "createdAt" | "greenPointsSpent" | undefined) ?? "createdAt";
+    const sortOrder = (req.query.sortOrder as "asc" | "desc" | undefined) ?? "desc";
 
     try {
       const { redemptions, total } = await giftService.listRedemptionsForUser(
         userId,
         page,
-        limit
+        limit,
+        sortBy,
+        sortOrder
       );
       const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
       sendSuccess(res, HTTP_STATUS.OK, {
