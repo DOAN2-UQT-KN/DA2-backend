@@ -175,11 +175,39 @@ app.use(
   }),
 );
 
-// Proxy routes — Reward (gifts, difficulties, …)
+// Proxy routes — Reward (gifts, difficulties, points, redemptions, leaderboard)
 app.use(
   "/api/v1/gifts",
   proxy(REWARD_SERVICE_URL, {
     proxyReqPathResolver: (req) => `/api/v1/gifts${req.url}`,
+  }),
+);
+
+app.use(
+  "/api/v1/difficulties",
+  proxy(REWARD_SERVICE_URL, {
+    proxyReqPathResolver: (req) => `/api/v1/difficulties${req.url}`,
+  }),
+);
+
+app.use(
+  "/api/v1/me/points",
+  proxy(REWARD_SERVICE_URL, {
+    proxyReqPathResolver: (req) => `/api/v1/me/points${req.url}`,
+  }),
+);
+
+app.use(
+  "/api/v1/me/redemptions",
+  proxy(REWARD_SERVICE_URL, {
+    proxyReqPathResolver: (req) => `/api/v1/me/redemptions${req.url}`,
+  }),
+);
+
+app.use(
+  "/api/v1/leaderboard",
+  proxy(REWARD_SERVICE_URL, {
+    proxyReqPathResolver: (req) => `/api/v1/leaderboard${req.url}`,
   }),
 );
 
