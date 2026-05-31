@@ -21,6 +21,7 @@ import type {
   MyJoinRequestsQuery,
 } from "./campaign.dto";
 import { normalizeQueryUuidList } from "../../utils/query-uuid-list";
+import { resolveRequestLocale } from "../../utils/resolve-request-locale";
 
 const CAMPAIGN_BATCH_QUERY_MAX_IDS = 100;
 
@@ -78,15 +79,6 @@ export class CampaignController {
       .optional()
       .isUUID()
       .withMessage("Each reportId must be a valid UUID"),
-    body("notifyMembers")
-      .optional()
-      .isBoolean()
-      .withMessage("notifyMembers must be a boolean"),
-    body("notifyNearbyToVerify")
-      .optional()
-      .isBoolean()
-      .withMessage("notifyNearbyToVerify must be a boolean"),
-
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -163,6 +155,7 @@ export class CampaignController {
 
       try {
         const q: CampaignListQuery = {
+          lang: resolveRequestLocale(req),
           search: req.query.search
             ? String(req.query.search).trim()
             : undefined,
@@ -270,6 +263,7 @@ export class CampaignController {
         }
 
         const q: CampaignListQuery = {
+          lang: resolveRequestLocale(req),
           search: req.query.search
             ? String(req.query.search).trim()
             : undefined,
@@ -356,6 +350,7 @@ export class CampaignController {
         const campaigns = await campaignService.getCampaignsByIds(
           campaignParsed.ids,
           req.user?.userId,
+          resolveRequestLocale(req),
         );
         sendSuccess(res, HTTP_STATUS.OK, { campaigns });
       } catch (error) {
@@ -380,6 +375,7 @@ export class CampaignController {
         const campaign = await campaignService.getCampaignById(
           req.params.id,
           req.user?.userId,
+          resolveRequestLocale(req),
         );
         if (!campaign) {
           return sendError(

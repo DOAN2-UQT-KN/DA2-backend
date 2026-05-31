@@ -1,5 +1,12 @@
 import { Prisma } from "@prisma/client";
+import type { AppLocale } from "@da2/constants";
 import prisma from "../../config/prisma.client";
+import {
+  ReportJobType,
+  TranslationResourceType,
+  type TranslationFieldTarget,
+} from "../../constants/job-type.enum";
+import { backgroundJobDispatcher } from "../../queue/register";
 import {
   GlobalStatus,
   JoinRequestStatus,
@@ -9,13 +16,9 @@ import {
 } from "../../constants/status.enum";
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 import { organizationRepository } from "../organization/organization.repository";
-import { organizationMemberRepository } from "../organization/organization_member.repository";
 import {
   enqueueCampaignCompletionPendingAdminWebsiteNotification,
-  enqueueCampaignCompletionRejectedByAdminWebsiteNotification,
-  enqueueCampaignCreatedWebsiteNotification,
-  enqueueCampaignDoneWebsiteNotification,
-  enqueueCampaignVerifyInviteNotification,
+  enqueueWebsiteNotificationsToUsers,
 } from "./notification-jobs.client";
 import { getCampaignCompletionAdminNotifyUserIds } from "./campaign-completion-admin-notify.config";
 import { campaignManagerRepository } from "./campaign_manager/campaign_manager.repository";
@@ -32,9 +35,17 @@ import {
   UpdateCampaignRequest,
 } from "./campaign.dto";
 import { CampaignWithReports, toCampaignResponse } from "./campaign.entity";
+import {
+  campaignNameNotificationPayload,
+  campaignTitleNotificationPayload,
+} from "./campaign-i18n";
 import { savedResourceRepository } from "../saved_resource/saved_resource.repository";
 import { defaultResourceVoteSummary } from "../vote/vote.dto";
 import { voteService } from "../vote/vote.service";
+import {
+  defaultCampaignCompletionVerificationSummary,
+} from "./campaign_completion_verification/campaign_completion_verification.dto";
+import { campaignCompletionVerificationService } from "./campaign_completion_verification/campaign_completion_verification.service";
 import {
   fetchIdentityUsersWithContactByIds,
   fetchOrganizationOwnersByUserIds,
@@ -50,6 +61,30 @@ import { reportRepository } from "../report/report.repository";
 
 /** Hardcoded radius for community verify invites (meters). */
 const NOTIFY_NEARBY_VERIFY_RADIUS_METERS = 5_000;
+
+function enqueueCampaignTranslationJob(
+  resourceId: string,
+  translations: TranslationFieldTarget[],
+): void {
+  const cleaned = translations.filter(
+    (t) => t.sourceText.trim().length > 0 && (t.viField || t.enField),
+  );
+  if (cleaned.length === 0) {
+    return;
+  }
+  backgroundJobDispatcher
+    .enqueue(ReportJobType.TRANSLATE_TEXT, {
+      resourceType: TranslationResourceType.CAMPAIGN,
+      resourceId,
+      translations: cleaned,
+    })
+    .catch((err: Error) => {
+      console.error(
+        "[incident-service] Failed to enqueue campaign translation job:",
+        err.message,
+      );
+    });
+}
 
 export class CampaignService {
   constructor() {}
@@ -245,6 +280,7 @@ export class CampaignService {
 
   private async toResponse(
     entity: CampaignWithReports,
+    locale?: AppLocale | null,
   ): Promise<CampaignResponse> {
     const [tier, currentMembers] = await Promise.all([
       rewardServiceClient.getDifficultyByLevel(entity.difficulty),
@@ -258,7 +294,13 @@ export class CampaignService {
     }
     const greenPoints = tier?.greenPoints ?? 0;
     const maxMembers = tier?.maxVolunteers ?? null;
-    return toCampaignResponse(entity, greenPoints, currentMembers, maxMembers);
+    return toCampaignResponse(
+      entity,
+      greenPoints,
+      currentMembers,
+      maxMembers,
+      locale,
+    );
   }
 
   private async withCampaignVotes(
@@ -269,9 +311,13 @@ export class CampaignService {
       return campaigns;
     }
     const ids = campaigns.map((c) => c.id);
-    const [map, savedIds] = await Promise.all([
+    const [map, verificationMap, savedIds] = await Promise.all([
       voteService.getVoteSummariesForResources(
         VoteResourceType.CAMPAIGN,
+        ids,
+        viewerUserId ?? null,
+      ),
+      campaignCompletionVerificationService.getSummariesForCampaigns(
         ids,
         viewerUserId ?? null,
       ),
@@ -286,6 +332,9 @@ export class CampaignService {
     return campaigns.map((c) => ({
       ...c,
       votes: map.get(c.id) ?? defaultResourceVoteSummary(viewerUserId ?? null),
+      completionVerification:
+        verificationMap.get(c.id) ??
+        defaultCampaignCompletionVerificationSummary(viewerUserId ?? null),
       saved: viewerUserId != null ? savedIds.has(c.id) : null,
     }));
   }
@@ -293,8 +342,9 @@ export class CampaignService {
   private async toResponseWithVotes(
     entity: CampaignWithReports,
     viewerUserId?: string | null,
+    locale?: AppLocale | null,
   ): Promise<CampaignResponse> {
-    const base = await this.toResponse(entity);
+    const base = await this.toResponse(entity, locale);
     const [one] = await this.withCampaignVotes([base], viewerUserId);
     return one;
   }
@@ -369,13 +419,34 @@ export class CampaignService {
     const managerIds = [userId];
     await this.validateReportIds(reportIds);
 
+    const sourceTitle = request.title.trim();
+    const titleVi =
+      request.titleVi?.trim() || request.titleEn?.trim() || sourceTitle;
+    const titleEn =
+      request.titleEn?.trim() || request.titleVi?.trim() || sourceTitle;
+    const sourceDesc = request.description?.trim() ?? "";
+    const descriptionVi =
+      request.descriptionVi?.trim() ||
+      request.descriptionEn?.trim() ||
+      sourceDesc ||
+      null;
+    const descriptionEn =
+      request.descriptionEn?.trim() ||
+      request.descriptionVi?.trim() ||
+      sourceDesc ||
+      null;
+
     const created = await prisma.$transaction(
       async (tx) => {
         const campaign = await tx.campaign.create({
           data: {
-            title: request.title,
+            title: sourceTitle,
+            titleVi,
+            titleEn,
             banner: request.banner,
-            description: request.description,
+            description: sourceDesc || null,
+            descriptionVi,
+            descriptionEn,
             startDate: request.startDate ? new Date(request.startDate) : null,
             endDate: request.endDate ? new Date(request.endDate) : null,
             detailAddress: request.detailAddress,
@@ -423,103 +494,60 @@ export class CampaignService {
       throw new Error("Failed to create campaign");
     }
 
-    if (request.notifyMembers === true) {
-      void this.notifyOrganizationMembersOfNewCampaign({
-        organizationId: request.organizationId,
-        organizationName: org.name,
-        campaignId: created.id,
-        campaignTitle: request.title,
-        creatorUserId: userId,
-      }).catch((err) => {
-        console.warn(
-          "[campaign] failed to notify organization members of new campaign",
-          err,
-        );
-      });
-    }
-
-    if (request.notifyNearbyToVerify === true) {
-      void this.notifyNearbyCitizensToVerifyCampaign({
-        campaignId: created.id,
-        campaignTitle: request.title,
-        latitude: request.latitude,
-        longitude: request.longitude,
-        creatorUserId: userId,
-      }).catch((err) => {
-        console.warn(
-          "[campaign] failed to notify nearby citizens for community verify",
-          err,
-        );
-      });
-    }
+    enqueueCampaignTranslationJob(created.id, [
+      {
+        sourceText: sourceTitle,
+        viField: "titleVi",
+        enField: "titleEn",
+      },
+      ...(sourceDesc
+        ? [
+            {
+              sourceText: sourceDesc,
+              viField: "descriptionVi",
+              enField: "descriptionEn",
+            },
+          ]
+        : []),
+    ]);
 
     return this.toResponseWithVotes(created, viewerUserId ?? userId);
-  }
-
-  private async notifyOrganizationMembersOfNewCampaign(args: {
-    organizationId: string;
-    organizationName: string;
-    campaignId: string;
-    campaignTitle: string;
-    creatorUserId: string;
-  }): Promise<void> {
-    const members =
-      await organizationMemberRepository.findAllActiveByOrganization(
-        args.organizationId,
-      );
-    const recipientIds = [
-      ...new Set(
-        members
-          .map((m) => m.userId)
-          .filter((id) => id && id !== args.creatorUserId),
-      ),
-    ];
-    if (recipientIds.length === 0) {
-      console.warn(
-        "[campaign] notify members: no recipients (only users in organization_members are notified; owner is excluded and is usually not in that table).",
-        { organizationId: args.organizationId, campaignId: args.campaignId },
-      );
-      return;
-    }
-
-    await Promise.all(
-      recipientIds.map((userId) =>
-        enqueueCampaignCreatedWebsiteNotification({
-          userId,
-          organizationName: args.organizationName,
-          campaignTitle: args.campaignTitle,
-          campaignId: args.campaignId,
-          organizationId: args.organizationId,
-        }),
-      ),
-    );
   }
 
   /**
    * Notifies citizens near the campaign point: users with a saved location (identity-service)
    * and/or users who filed geolocated reports in the area (`reportRepository`).
    */
-  private async notifyNearbyCitizensToVerifyCampaign(args: {
+  private async notifyNearbyCitizensForCampaignVerify(args: {
+    kind: "CAMPAIGN_VERIFY_INVITE" | "CAMPAIGN_COMPLETION_VERIFY_INVITE";
     campaignId: string;
-    campaignTitle: string;
-    latitude?: number;
-    longitude?: number;
-    creatorUserId: string;
+    campaign: {
+      title: string;
+      titleVi?: string | null;
+      titleEn?: string | null;
+    };
+    latitude?: number | null;
+    longitude?: number | null;
+    excludeUserIds: string[];
   }): Promise<void> {
     if (args.latitude == null || args.longitude == null) {
       console.warn(
-        "[campaign] notifyNearbyToVerify skipped: latitude/longitude required",
-        { campaignId: args.campaignId },
+        "[campaign] nearby verify notify skipped: latitude/longitude required",
+        { campaignId: args.campaignId, kind: args.kind },
       );
       return;
     }
+
+    const exclude = new Set(
+      args.excludeUserIds.map((id) => id?.toLowerCase().trim()).filter(Boolean),
+    );
 
     const [fromSavedLocation, fromReports] = await Promise.all([
       fetchUserIdsNearPoint({
         latitude: args.latitude,
         longitude: args.longitude,
         radiusMeters: NOTIFY_NEARBY_VERIFY_RADIUS_METERS,
-        excludeUserIds: [args.creatorUserId],
+        excludeUserIds: [...exclude],
       }),
       reportRepository.findDistinctReporterUserIdsNearPoint(
         args.longitude,
@@ -531,32 +559,69 @@ export class CampaignService {
     const recipientIds = [
       ...new Set(
         [...fromSavedLocation, ...fromReports].filter(
-          (id) => id && id !== args.creatorUserId,
+          (id) => id && !exclude.has(id.toLowerCase().trim()),
         ),
       ),
     ];
+
     if (recipientIds.length === 0) {
       return;
     }
 
-    await Promise.all(
-      recipientIds.map((uid) =>
-        enqueueCampaignVerifyInviteNotification({
-          userId: uid,
-          campaignTitle: args.campaignTitle,
-          campaignId: args.campaignId,
-        }),
-      ),
-    );
+    await enqueueWebsiteNotificationsToUsers({
+      kind: args.kind,
+      userIds: recipientIds,
+      payload: {
+        campaignId: args.campaignId,
+        ...campaignTitleNotificationPayload(args.campaign),
+      },
+    });
+  }
+
+  /** After admin approves a campaign: invite nearby citizens to join as volunteers. */
+  private async notifyNearbyCitizensToJoinApprovedCampaign(args: {
+    campaign: {
+      id: string;
+      title: string;
+      titleVi?: string | null;
+      titleEn?: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      createdBy: string | null;
+    };
+    adminUserId: string;
+  }): Promise<void> {
+    const [managerRows] = await Promise.all([
+      campaignManagerRepository.findManagersByCampaignId(args.campaign.id),
+    ]);
+    const excludeUserIds = [
+      args.adminUserId,
+      ...(args.campaign.createdBy ? [args.campaign.createdBy] : []),
+      ...managerRows.map((m) => m.userId),
+    ];
+
+    await this.notifyNearbyCitizensForCampaignVerify({
+      kind: "CAMPAIGN_VERIFY_INVITE",
+      campaignId: args.campaign.id,
+      campaign: args.campaign,
+      latitude: args.campaign.latitude,
+      longitude: args.campaign.longitude,
+      excludeUserIds,
+    });
   }
 
   async getCampaignById(
     id: string,
     viewerUserId?: string | null,
+    locale?: AppLocale | null,
   ): Promise<CampaignResponse | null> {
     const campaign = await campaignRepository.findById(id);
     if (!campaign) return null;
-    const baseRaw = await this.toResponseWithVotes(campaign, viewerUserId);
+    const baseRaw = await this.toResponseWithVotes(
+      campaign,
+      viewerUserId,
+      locale,
+    );
     const [base] = await this.enrichCampaignsForGet([baseRaw], viewerUserId);
     if (!viewerUserId) {
       return base;
@@ -577,6 +642,7 @@ export class CampaignService {
   async getCampaignsByIds(
     campaignIds: string[],
     viewerUserId?: string | null,
+    locale?: AppLocale | null,
   ): Promise<CampaignResponse[]> {
     if (campaignIds.length === 0) {
       return [];
@@ -606,12 +672,14 @@ export class CampaignService {
       await campaignJoiningRequestRepository.countApprovedByCampaignIds(
         resolved.map((c) => c.id),
       );
+    const loc = locale ?? "en";
     const list = resolved.map((campaign) =>
       toCampaignResponse(
         campaign,
         greenByLevel.get(campaign.difficulty) ?? 0,
         approvedByCampaignId.get(campaign.id) ?? 0,
         maxByLevel.get(campaign.difficulty) ?? null,
+        loc,
       ),
     );
     const withVotes = await this.withCampaignVotes(list, viewerUserId);
@@ -708,12 +776,14 @@ export class CampaignService {
       }
     }
 
+    const locale = query.lang ?? "en";
     const campaigns = rows.map((campaign) =>
       toCampaignResponse(
         campaign,
         tierMaps.greenByLevel.get(campaign.difficulty) ?? 0,
         approvedByCampaignId.get(campaign.id) ?? 0,
         tierMaps.maxByLevel.get(campaign.difficulty) ?? null,
+        locale,
       ),
     );
     const campaignsWithVotes = await this.withCampaignVotes(
@@ -874,6 +944,7 @@ export class CampaignService {
           greenByLevel.get(entity.difficulty) ?? 0,
           approvedByCampaignId.get(entity.id) ?? 0,
           maxByLevel.get(entity.difficulty) ?? null,
+          "en",
         );
         return {
           ...base,
@@ -1072,6 +1143,17 @@ export class CampaignService {
       status: GlobalStatus._STATUS_ACTIVE,
       updatedBy: adminUserId,
     });
+
+    void this.notifyNearbyCitizensToJoinApprovedCampaign({
+      campaign: updated,
+      adminUserId,
+    }).catch((err) => {
+      console.warn(
+        "[campaign] failed to notify nearby citizens to join approved campaign",
+        err,
+      );
+    });
+
     return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
   }
 
@@ -1101,7 +1183,7 @@ export class CampaignService {
       const managerUserIds = this.collectCampaignManagerUserIds(existing);
       void this.notifyCampaignManagersCompletionRejectedByAdmin({
         campaignId: id,
-        campaignTitle: existing.title,
+        campaign: existing,
         managerUserIds,
       }).catch((err) => {
         console.warn(
@@ -1229,7 +1311,7 @@ export class CampaignService {
 
     void this.notifyAdminsCampaignCompletionPendingApproval({
       campaignId: id,
-      campaignTitle: existing.title,
+      campaign: existing,
     }).catch((err) => {
       console.warn(
         "[campaign] failed to notify admins of pending campaign completion",
@@ -1237,7 +1319,50 @@ export class CampaignService {
       );
     });
 
+    void this.notifyNearbyOnCampaignCompletionSubmitted({
+      campaign: existing,
+      submitterUserId: userId,
+    }).catch((err) => {
+      console.warn(
+        "[campaign] failed to notify nearby citizens for completion verify",
+        err,
+      );
+    });
+
     return this.toResponseWithVotes(updated, viewerUserId ?? userId);
+  }
+
+  private async notifyNearbyOnCampaignCompletionSubmitted(args: {
+    campaign: {
+      id: string;
+      title: string;
+      latitude: number | null;
+      longitude: number | null;
+      createdBy: string | null;
+    };
+    submitterUserId: string;
+  }): Promise<void> {
+    const [managerRows, volunteerIds] = await Promise.all([
+      campaignManagerRepository.findManagersByCampaignId(args.campaign.id),
+      campaignJoiningRequestRepository.findApprovedVolunteerIdsByCampaignId(
+        args.campaign.id,
+      ),
+    ]);
+    const excludeUserIds = [
+      args.submitterUserId,
+      ...(args.campaign.createdBy ? [args.campaign.createdBy] : []),
+      ...managerRows.map((m) => m.userId),
+      ...volunteerIds,
+    ];
+
+    await this.notifyNearbyCitizensForCampaignVerify({
+      kind: "CAMPAIGN_COMPLETION_VERIFY_INVITE",
+      campaignId: args.campaign.id,
+      campaign: args.campaign,
+      latitude: args.campaign.latitude,
+      longitude: args.campaign.longitude,
+      excludeUserIds,
+    });
   }
 
   /** Admin-only: finalize completion (waiting admin confirmation → completed). */
@@ -1395,7 +1520,7 @@ export class CampaignService {
     void this.notifyApprovedVolunteersCampaignDone({
       volunteerIds: approvedVolunteerIds,
       campaignId: id,
-      campaignName: existing.title,
+      campaign: existing,
     }).catch((err) => {
       console.warn(
         "[campaign] failed to notify volunteers of campaign completion",
@@ -1413,25 +1538,32 @@ export class CampaignService {
   private async notifyApprovedVolunteersCampaignDone(args: {
     volunteerIds: string[];
     campaignId: string;
-    campaignName: string;
+    campaign: {
+      title: string;
+      titleVi?: string | null;
+      titleEn?: string | null;
+    };
   }): Promise<void> {
     if (args.volunteerIds.length === 0) {
       return;
     }
-    await Promise.all(
-      args.volunteerIds.map((uid) =>
-        enqueueCampaignDoneWebsiteNotification({
-          userId: uid,
-          campaignId: args.campaignId,
-          campaignName: args.campaignName,
-        }),
-      ),
-    );
+    await enqueueWebsiteNotificationsToUsers({
+      kind: "CAMPAIGN_DONE",
+      userIds: args.volunteerIds,
+      payload: {
+        campaignId: args.campaignId,
+        ...campaignNameNotificationPayload(args.campaign),
+      },
+    });
   }
 
   private async notifyAdminsCampaignCompletionPendingApproval(args: {
     campaignId: string;
-    campaignTitle: string;
+    campaign: {
+      title: string;
+      titleVi?: string | null;
+      titleEn?: string | null;
+    };
   }): Promise<void> {
     const adminIds = getCampaignCompletionAdminNotifyUserIds();
     if (adminIds.length === 0) {
@@ -1441,12 +1573,13 @@ export class CampaignService {
       );
       return;
     }
+    const titlePayload = campaignTitleNotificationPayload(args.campaign);
     await Promise.all(
       adminIds.map((userId) =>
         enqueueCampaignCompletionPendingAdminWebsiteNotification({
           userId,
           campaignId: args.campaignId,
-          campaignTitle: args.campaignTitle,
+          campaignTitle: titlePayload.campaignTitle,
         }),
       ),
     );
@@ -1467,21 +1600,24 @@ export class CampaignService {
 
   private async notifyCampaignManagersCompletionRejectedByAdmin(args: {
     campaignId: string;
-    campaignTitle: string;
+    campaign: {
+      title: string;
+      titleVi?: string | null;
+      titleEn?: string | null;
+    };
     managerUserIds: string[];
   }): Promise<void> {
     if (args.managerUserIds.length === 0) {
       return;
     }
-    await Promise.all(
-      args.managerUserIds.map((userId) =>
-        enqueueCampaignCompletionRejectedByAdminWebsiteNotification({
-          userId,
-          campaignId: args.campaignId,
-          campaignTitle: args.campaignTitle,
-        }),
-      ),
-    );
+    await enqueueWebsiteNotificationsToUsers({
+      kind: "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN",
+      userIds: args.managerUserIds,
+      payload: {
+        campaignId: args.campaignId,
+        ...campaignTitleNotificationPayload(args.campaign),
+      },
+    });
   }
 
   async deleteCampaign(id: string, userId: string): Promise<void> {

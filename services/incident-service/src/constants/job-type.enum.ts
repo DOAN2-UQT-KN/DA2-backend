@@ -8,6 +8,7 @@ export enum ReportJobType {
 export enum TranslationResourceType {
   REPORT = "REPORT",
   ORGANIZATION = "ORGANIZATION",
+  CAMPAIGN = "CAMPAIGN",
 }
 
 /**

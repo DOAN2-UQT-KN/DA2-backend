@@ -1,4 +1,5 @@
 import axios from "axios";
+import { filterUserIdsForNotificationKind } from "../organization/identity-user.client";
 
 interface SuccessEnvelope<T> {
   success: boolean;
@@ -40,6 +41,30 @@ async function postWebsiteNotificationJob(params: {
   }
 }
 
+/** Enqueue the same in-app notification to many users (respects notification prefs). */
+export async function enqueueWebsiteNotificationsToUsers(params: {
+  kind: string;
+  userIds: string[];
+  payload: Record<string, string>;
+}): Promise<void> {
+  const enabled = await filterUserIdsForNotificationKind({
+    userIds: params.userIds,
+    kind: params.kind,
+  });
+  if (enabled.length === 0) {
+    return;
+  }
+  await Promise.all(
+    enabled.map((userId) =>
+      postWebsiteNotificationJob({
+        kind: params.kind,
+        userId,
+        payload: params.payload,
+      }),
+    ),
+  );
+}
+
 /** In-app: org members when a new campaign is published. */
 export async function enqueueCampaignCreatedWebsiteNotification(params: {
   userId: string;
@@ -48,9 +73,9 @@ export async function enqueueCampaignCreatedWebsiteNotification(params: {
   campaignId: string;
   organizationId: string;
 }): Promise<void> {
-  await postWebsiteNotificationJob({
+  await enqueueWebsiteNotificationsToUsers({
     kind: "CAMPAIGN_CREATED",
-    userId: params.userId,
+    userIds: [params.userId],
     payload: {
       organizationName: params.organizationName,
       campaignTitle: params.campaignTitle,
@@ -66,9 +91,9 @@ export async function enqueueCampaignDoneWebsiteNotification(params: {
   campaignName: string;
   campaignId: string;
 }): Promise<void> {
-  await postWebsiteNotificationJob({
+  await enqueueWebsiteNotificationsToUsers({
     kind: "CAMPAIGN_DONE",
-    userId: params.userId,
+    userIds: [params.userId],
     payload: {
       campaignName: params.campaignName,
       campaignId: params.campaignId,
@@ -98,9 +123,9 @@ export async function enqueueCampaignCompletionRejectedByAdminWebsiteNotificatio
   campaignTitle: string;
   campaignId: string;
 }): Promise<void> {
-  await postWebsiteNotificationJob({
+  await enqueueWebsiteNotificationsToUsers({
     kind: "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN",
-    userId: params.userId,
+    userIds: [params.userId],
     payload: {
       campaignTitle: params.campaignTitle,
       campaignId: params.campaignId,
@@ -115,9 +140,9 @@ export async function enqueueCampaignSubmissionPendingReviewNotification(params:
   campaignId: string;
   submissionId: string;
 }): Promise<void> {
-  await postWebsiteNotificationJob({
+  await enqueueWebsiteNotificationsToUsers({
     kind: "CAMPAIGN_SUBMISSION_PENDING_REVIEW",
-    userId: params.userId,
+    userIds: [params.userId],
     payload: {
       campaignTitle: params.campaignTitle,
       campaignId: params.campaignId,
@@ -133,9 +158,9 @@ export async function enqueueCampaignSubmissionApprovedNotification(params: {
   campaignId: string;
   submissionId: string;
 }): Promise<void> {
-  await postWebsiteNotificationJob({
+  await enqueueWebsiteNotificationsToUsers({
     kind: "CAMPAIGN_SUBMISSION_APPROVED",
-    userId: params.userId,
+    userIds: [params.userId],
     payload: {
       campaignTitle: params.campaignTitle,
       campaignId: params.campaignId,
@@ -145,16 +170,34 @@ export async function enqueueCampaignSubmissionApprovedNotification(params: {
 }
 
 /**
- * In-app: nearby citizens — asked to open the campaign and cast a community vote (up/down).
+ * In-app: nearby citizens — campaign approved; open and join as volunteers.
  */
 export async function enqueueCampaignVerifyInviteNotification(params: {
   userId: string;
   campaignTitle: string;
   campaignId: string;
 }): Promise<void> {
-  await postWebsiteNotificationJob({
+  await enqueueWebsiteNotificationsToUsers({
     kind: "CAMPAIGN_VERIFY_INVITE",
-    userId: params.userId,
+    userIds: [params.userId],
+    payload: {
+      campaignTitle: params.campaignTitle,
+      campaignId: params.campaignId,
+    },
+  });
+}
+
+/**
+ * In-app: nearby citizens — campaign submitted for completion; verify clean / not clean.
+ */
+export async function enqueueCampaignCompletionVerifyInviteNotification(params: {
+  userId: string;
+  campaignTitle: string;
+  campaignId: string;
+}): Promise<void> {
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "CAMPAIGN_COMPLETION_VERIFY_INVITE",
+    userIds: [params.userId],
     payload: {
       campaignTitle: params.campaignTitle,
       campaignId: params.campaignId,
@@ -185,9 +228,9 @@ export async function enqueueVolunteerRequestWebsiteNotification(params: {
     payload.organizationId = params.organizationId;
   }
 
-  await postWebsiteNotificationJob({
+  await enqueueWebsiteNotificationsToUsers({
     kind: "VOLUNTEER_REQUEST",
-    userId: params.userId,
+    userIds: [params.userId],
     payload,
   });
 }

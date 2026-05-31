@@ -81,7 +81,7 @@ export class VoteService {
     resourceId: string;
     newValue: number;
   }): Promise<void> {
-    // Only enqueue for report upvotes (not downvotes, not toggling off).
+    // Report creator bonus: evaluate admin vote milestones for this report only.
     if (args.resourceType !== VoteResourceType.REPORT) return;
     if (args.newValue !== VoteValue.UP) return;
 
@@ -98,11 +98,13 @@ export class VoteService {
         upvoteCount: 0,
         downvoteCount: 0,
       };
+      const upvoteCount = counts.upvoteCount;
+      if (upvoteCount <= 0) return;
 
       await rewardServiceClient.enqueueReportVoteMilestoneGreenPoints({
         reportId: args.resourceId,
         reportCreatorUserId,
-        voteCount: counts.upvoteCount,
+        voteCount: upvoteCount,
       });
     } catch (e) {
       // Best-effort: do not block voting UX when reward enqueue fails.
