@@ -1,3 +1,5 @@
+import type { NotificationPreferences } from "@da2/constants";
+
 // Request DTOs
 export interface CreateUserRequest {
     email: string;
@@ -16,6 +18,7 @@ export interface UpdateUserRequest {
     /** Both required together when updating; use `null` for both to clear stored location. */
     latitude?: number | null;
     longitude?: number | null;
+    notificationPreferences?: Partial<NotificationPreferences>;
 }
 
 // Response DTOs (excludes password and sensitive fields)
@@ -33,4 +36,5 @@ export interface UserResponse {
     latitude: number | null;
     longitude: number | null;
     locationUpdatedAt: Date | null;
+    notificationPreferences: NotificationPreferences;
 }

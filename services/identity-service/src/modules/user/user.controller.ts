@@ -66,6 +66,14 @@ export class UserController {
                 }
                 throw new Error('longitude must be null or between -180 and 180');
             }),
+        body('notificationPreferences')
+            .optional()
+            .isObject()
+            .withMessage('notificationPreferences must be an object'),
+        body('notificationPreferences.*')
+            .optional()
+            .isBoolean()
+            .withMessage('notification preference values must be boolean'),
 
         async (req: Request, res: Response): Promise<void> => {
             const errors = validationResult(req);

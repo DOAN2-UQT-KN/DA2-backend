@@ -128,6 +128,35 @@ router.post(
   },
 );
 
+/**
+ * Incident-service: all users with Haversine distance (m) from a point (debug on campaign create).
+ */
+router.post(
+  "/users/distance-from-point",
+  body("latitude").isFloat({ min: -90, max: 90 }),
+  body("longitude").isFloat({ min: -180, max: 180 }),
+  async (req, res): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, HTTP_STATUS.VALIDATION_ERROR, { errors: errors.array() });
+      return;
+    }
+
+    const body = req.body as { latitude: number; longitude: number };
+
+    try {
+      const users = await userService.findUsersWithDistanceFromPointForInternal({
+        latitude: body.latitude,
+        longitude: body.longitude,
+      });
+      sendSuccess(res, HTTP_STATUS.OK, { users });
+    } catch (error) {
+      console.error("Internal users distance-from-point error:", error);
+      sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    }
+  },
+);
+
 router.post(
   "/users/by-ids",
   body("ids").isArray({ min: 1, max: 100 }),
@@ -145,6 +174,39 @@ router.post(
       sendSuccess(res, HTTP_STATUS.OK, { users });
     } catch (error) {
       console.error("Internal users by-ids error:", error);
+      sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    }
+  },
+);
+
+/**
+ * Incident-service: filter user ids that opted in for a notification kind.
+ */
+router.post(
+  "/users/notification-prefs/filter",
+  body("userIds").isArray({ min: 1, max: 500 }),
+  body("userIds.*").isUUID(),
+  body("kind").isString().notEmpty(),
+  async (req, res): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, HTTP_STATUS.VALIDATION_ERROR, { errors: errors.array() });
+      return;
+    }
+
+    const { userIds, kind } = req.body as {
+      userIds: string[];
+      kind: string;
+    };
+
+    try {
+      const enabledUserIds = await userService.filterUserIdsForNotificationKind({
+        userIds,
+        kind,
+      });
+      sendSuccess(res, HTTP_STATUS.OK, { userIds: enabledUserIds });
+    } catch (error) {
+      console.error("Internal notification-prefs filter error:", error);
       sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
   },

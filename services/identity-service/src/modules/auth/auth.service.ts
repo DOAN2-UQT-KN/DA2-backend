@@ -12,6 +12,7 @@ import {
 import { userRepository } from "../user/user.repository";
 import { roleRepository } from "../role/role.repository";
 import { authTokenRepository } from "./auth_token.repository";
+import { mergeNotificationPreferences } from "@da2/constants";
 import {
   SignupRequest,
   SignupResponse,
@@ -274,6 +275,9 @@ export class AuthService {
       latitude: user.latitude,
       longitude: user.longitude,
       locationUpdatedAt: user.locationUpdatedAt,
+      notificationPreferences: mergeNotificationPreferences(
+        user.notificationPreferences,
+      ),
     };
   }
 

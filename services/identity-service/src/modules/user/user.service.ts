@@ -1,3 +1,10 @@
+import { Prisma } from '@prisma/client';
+import {
+    mergeNotificationPreferences,
+    isNotificationEnabledForUser,
+    NOTIFICATION_PREFERENCE_KEYS,
+    type NotificationPreferences,
+} from '@da2/constants';
 import { userRepository } from './user.repository';
 import { toUserResponse } from './user.entity';
 import { UpdateUserRequest, UserResponse } from './user.dto';
@@ -84,14 +91,60 @@ export class UserService {
             }
         }
 
-        const user = await userRepository.update(id, {
-            name: request.name,
-            avatar: request.avatar,
-            bio: request.bio,
-            roleId: request.roleId,
+        let notificationPreferences: NotificationPreferences | undefined;
+        if (request.notificationPreferences !== undefined) {
+            const current = mergeNotificationPreferences(
+                existing.notificationPreferences,
+            );
+            const patch = request.notificationPreferences;
+            for (const key of NOTIFICATION_PREFERENCE_KEYS) {
+                const v = patch[key];
+                if (typeof v === 'boolean') {
+                    current[key] = v;
+                }
+            }
+            notificationPreferences = current;
+        }
+
+        const updateData: Prisma.UserUpdateInput = {
+            ...(request.name !== undefined ? { name: request.name } : {}),
+            ...(request.avatar !== undefined ? { avatar: request.avatar } : {}),
+            ...(request.bio !== undefined ? { bio: request.bio } : {}),
+            ...(request.roleId !== undefined
+                ? { role: { connect: { id: request.roleId } } }
+                : {}),
             ...locationPatch,
-        });
+            ...(notificationPreferences !== undefined
+                ? {
+                      notificationPreferences:
+                          notificationPreferences as Prisma.InputJsonValue,
+                  }
+                : {}),
+        };
+
+        const user = await userRepository.update(id, updateData);
         return toUserResponse(user, { includeLocation: true });
+    }
+
+    /** Internal: return user ids that have not opted out of this notification kind. */
+    async filterUserIdsForNotificationKind(params: {
+        userIds: string[];
+        kind: string;
+    }): Promise<string[]> {
+        const rows = await userRepository.findNotificationPrefsByIds(
+            params.userIds,
+        );
+        const prefById = new Map(
+            rows.map((r) => [
+                r.id,
+                mergeNotificationPreferences(r.notificationPreferences),
+            ]),
+        );
+        return params.userIds.filter((uid) => {
+            const prefs =
+                prefById.get(uid) ?? mergeNotificationPreferences(null);
+            return isNotificationEnabledForUser(prefs, params.kind);
+        });
     }
 
     async deleteUser(id: string): Promise<void> {
@@ -109,6 +162,25 @@ export class UserService {
     }
 
     /** Internal: user ids with last-known location within radius (meters). */
+    async findUsersWithDistanceFromPointForInternal(params: {
+        latitude: number;
+        longitude: number;
+    }): Promise<
+        {
+            id: string;
+            email: string;
+            name: string;
+            latitude: number | null;
+            longitude: number | null;
+            distanceMeters: number | null;
+        }[]
+    > {
+        return userRepository.findActiveUsersWithDistanceFromPoint(
+            params.longitude,
+            params.latitude,
+        );
+    }
+
     async findUserIdsNearPointForInternal(params: {
         latitude: number;
         longitude: number;
