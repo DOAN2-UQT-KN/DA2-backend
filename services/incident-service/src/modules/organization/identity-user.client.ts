@@ -34,6 +34,31 @@ function pickNullableString(v: unknown): string | null {
 /**
  * Scalars may arrive as non-strings (e.g. legacy clients); coerce for display fields.
  */
+function pickFiniteNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return v;
+  }
+  if (v != null && v !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** Identity internal responses use snake_case (`caseTransformMiddleware`). */
+function pickUserIdsFromEnvelope(inner: unknown): string[] {
+  if (!inner || typeof inner !== "object") {
+    return [];
+  }
+  const raw =
+    (inner as Record<string, unknown>).userIds ??
+    (inner as Record<string, unknown>).user_ids;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter((x): x is string => typeof x === "string" && x.length > 0);
+}
+
 function pickDisplayString(
   value: unknown,
   ...alts: Array<unknown>
@@ -88,6 +113,29 @@ function getUsersArrayFromResponse(data: unknown): unknown[] | null {
 
 const INTERNAL_USERS_BY_IDS_MAX = 100;
 
+/**
+ * RFC 4122 UUID accepted by identity-service `body("*.isUUID")` (validator.js).
+ * Seed/fixture ids are often UUID-shaped but invalid; one bad id fails the whole batch with 400.
+ */
+const IDENTITY_INTERNAL_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isIdentityCallableUserId(id: string): boolean {
+  return IDENTITY_INTERNAL_UUID_RE.test(id.trim());
+}
+
+export function filterUserIdsForIdentityInternalApi(
+  userIds: string[],
+): string[] {
+  return [
+    ...new Set(
+      userIds
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter((id) => id.length > 0 && isIdentityCallableUserId(id)),
+    ),
+  ];
+}
+
 /** Name + email from identity internal `/users/by-ids` (server-side only). */
 export interface IdentityUserContact {
   id: string;
@@ -137,9 +185,7 @@ export function getIdentityUserContact(
 export async function fetchIdentityUsersWithContactByIds(
   userIds: string[],
 ): Promise<Map<string, IdentityUserContact>> {
-  const unique = [
-    ...new Set(userIds.map((id) => id?.trim()).filter(Boolean)),
-  ] as string[];
+  const unique = filterUserIdsForIdentityInternalApi(userIds);
   const out = new Map<string, IdentityUserContact>();
   if (unique.length === 0) {
     return out;
@@ -210,9 +256,7 @@ function readProfileFromRow(
 export async function fetchOrganizationOwnersByUserIds(
   userIds: string[],
 ): Promise<Map<string, OrganizationOwnerResponse>> {
-  const unique = [
-    ...new Set(userIds.map((id) => id?.trim()).filter(Boolean)),
-  ] as string[];
+  const unique = filterUserIdsForIdentityInternalApi(userIds);
   const out = new Map<string, OrganizationOwnerResponse>();
   if (unique.length === 0) {
     return out;
@@ -244,6 +288,77 @@ export async function fetchOrganizationOwnersByUserIds(
   return out;
 }
 
+export interface UserDistanceFromPointRow {
+  id: string;
+  email: string;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  distanceMeters: number | null;
+}
+
+/** All active users and distance (m) from a point; null distance if no saved location. */
+export async function fetchUsersWithDistanceFromPoint(params: {
+  latitude: number;
+  longitude: number;
+}): Promise<UserDistanceFromPointRow[]> {
+  const baseURL = process.env.IDENTITY_SERVICE_URL?.trim();
+  const key = process.env.INTERNAL_IDENTITY_API_KEY?.trim();
+  if (!baseURL || !key) {
+    return [];
+  }
+
+  const client = axios.create({
+    baseURL: baseURL.replace(/\/$/, ""),
+    timeout: 10_000,
+    headers: { "x-internal-api-key": key },
+  });
+
+  try {
+    const { data } = await client.post<
+      SuccessEnvelope<{ users?: unknown }>
+    >("/internal/v1/users/distance-from-point", {
+      latitude: params.latitude,
+      longitude: params.longitude,
+    });
+
+    const inner = data?.data;
+    const raw =
+      inner && typeof inner === "object"
+        ? (inner as { users?: unknown }).users
+        : undefined;
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+
+    const out: UserDistanceFromPointRow[] = [];
+    for (const row of raw) {
+      if (!row || typeof row !== "object") {
+        continue;
+      }
+      const r = row as Record<string, unknown>;
+      const id = typeof r.id === "string" ? r.id : "";
+      if (!id) {
+        continue;
+      }
+      out.push({
+        id,
+        email: typeof r.email === "string" ? r.email : "",
+        name: typeof r.name === "string" ? r.name : "",
+        latitude: pickFiniteNumber(r.latitude),
+        longitude: pickFiniteNumber(r.longitude),
+        distanceMeters: pickFiniteNumber(
+          r.distanceMeters ?? r.distance_meters,
+        ),
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error("[identity-user.client] fetchUsersWithDistanceFromPoint:", e);
+    return [];
+  }
+}
+
 /**
  * Users who saved a last-known location within `radiusMeters` of the point (identity-service).
  */
@@ -268,6 +383,10 @@ export async function fetchUserIdsNearPoint(params: {
     headers: { "x-internal-api-key": key },
   });
 
+  const excludeUserIds = filterUserIdsForIdentityInternalApi(
+    params.excludeUserIds ?? [],
+  );
+
   try {
     const { data } = await client.post<
       SuccessEnvelope<{ userIds?: unknown }>
@@ -275,20 +394,66 @@ export async function fetchUserIdsNearPoint(params: {
       latitude: params.latitude,
       longitude: params.longitude,
       radiusMeters: params.radiusMeters,
-      excludeUserIds: params.excludeUserIds ?? [],
+      excludeUserIds,
     });
 
-    const inner = data?.data;
-    const raw =
-      inner && typeof inner === "object"
-        ? (inner as { userIds?: unknown }).userIds
-        : undefined;
-    if (!Array.isArray(raw)) {
-      return [];
-    }
-    return raw.filter((x): x is string => typeof x === "string" && x.length > 0);
+    return pickUserIdsFromEnvelope(data?.data);
   } catch (e) {
     console.error("[identity-user.client] fetchUserIdsNearPoint:", e);
     return [];
+  }
+}
+
+const INTERNAL_NOTIFICATION_FILTER_MAX = 500;
+
+/**
+ * Returns subset of `userIds` that have not opted out of `kind` (identity internal).
+ * On misconfiguration or error, returns all input ids (fail-open for delivery).
+ */
+export async function filterUserIdsForNotificationKind(params: {
+  userIds: string[];
+  kind: string;
+}): Promise<string[]> {
+  const unique = filterUserIdsForIdentityInternalApi(params.userIds);
+  if (unique.length === 0) {
+    return [];
+  }
+
+  const baseURL = process.env.IDENTITY_SERVICE_URL?.trim();
+  const key = process.env.INTERNAL_IDENTITY_API_KEY?.trim();
+  if (!baseURL || !key) {
+    console.warn(
+      "[identity-user.client] filterUserIdsForNotificationKind: identity env not set; skipping filter",
+    );
+    return unique;
+  }
+
+  const client = axios.create({
+    baseURL: baseURL.replace(/\/$/, ""),
+    timeout: 10_000,
+    headers: { "x-internal-api-key": key },
+  });
+
+  const enabled: string[] = [];
+  try {
+    for (let i = 0; i < unique.length; i += INTERNAL_NOTIFICATION_FILTER_MAX) {
+      const chunk = unique.slice(i, i + INTERNAL_NOTIFICATION_FILTER_MAX);
+      const { data } = await client.post<
+        SuccessEnvelope<{ userIds?: unknown }>
+      >("/internal/v1/users/notification-prefs/filter", {
+        userIds: chunk,
+        kind: params.kind,
+      });
+      for (const id of pickUserIdsFromEnvelope(data?.data)) {
+        enabled.push(id);
+      }
+    }
+    return enabled;
+  } catch (e) {
+    console.error(
+      "[identity-user.client] filterUserIdsForNotificationKind:",
+      e,
+    );
+    return unique;
   }
 }

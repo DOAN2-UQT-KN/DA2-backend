@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
 import { campaignController } from "./campaign.controller";
+import { campaignCompletionVerificationController } from "./campaign_completion_verification/campaign_completion_verification.controller";
 import { campaignSubmissionController } from "./campaign_submission/campaign_submission.controller";
 
 const router = Router();
@@ -9,7 +10,7 @@ const router = Router();
  * @route   POST /api/v1/campaigns
  * @desc    Create a new campaign under an organization (must be that org's owner); optionally link reports
  * @access  Private
- * @body    { organizationId, title, description?, difficulty, reportIds?, notifyMembers?, notifyNearbyToVerify?, latitude?, longitude? }
+ * @body    { organizationId, title, description?, difficulty, reportIds?, latitude?, longitude? }
  */
 router.post("/", authenticate, campaignController.createCampaign);
 
@@ -151,6 +152,17 @@ router.put("/:id/verify", authenticate, campaignController.adminVerifyCampaign);
  * @access  Private
  */
 router.put("/:id/mark-done", authenticate, campaignController.markCampaignDone);
+
+/**
+ * @route   POST /api/v1/campaigns/:id/completion-verification
+ * @desc    Submit community completion verification (clean / not clean)
+ * @access  Private
+ */
+router.post(
+  "/:id/completion-verification",
+  authenticate,
+  campaignCompletionVerificationController.submit,
+);
 
 /**
  * @route   POST /api/v1/campaigns/:id/attendance-qr

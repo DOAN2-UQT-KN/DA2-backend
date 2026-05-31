@@ -1,6 +1,7 @@
 import { GlobalStatus } from "../../constants/status.enum";
 import type { OrganizationOwnerResponse } from "../organization/organization.dto";
 import type { ResourceVoteSummary } from "../vote/vote.dto";
+import type { CampaignCompletionVerificationSummary } from "./campaign_completion_verification/campaign_completion_verification.dto";
 import type { ReportResponse } from "../report/report.dto";
 
 export interface CampaignOrganizationResponse {
@@ -20,8 +21,12 @@ export interface CreateCampaignRequest {
   /** Organization that owns this campaign; caller must be that organization's owner. */
   organizationId: string;
   title: string;
+  titleVi?: string;
+  titleEn?: string;
   banner?: string;
   description?: string;
+  descriptionVi?: string;
+  descriptionEn?: string;
   startDate?: string;
   endDate?: string;
   detailAddress?: string;
@@ -31,23 +36,16 @@ export interface CreateCampaignRequest {
   /** 1 = easy … 4 = very hard; must exist in reward-service `difficulties` table. */
   difficulty: number;
   reportIds?: string[];
-  /**
-   * When true, enqueue in-app notifications for all active organization members
-   * (except the creator). Only honored for the organization owner (same as create permission).
-   */
-  notifyMembers?: boolean;
-  /**
-   * When true and `latitude` / `longitude` are set, enqueue in-app invites for citizens
-   * who submitted reports within a fixed radius (currently 5 km) of the campaign point,
-   * so they can open the campaign and cast a community vote. Excludes the creator.
-   */
-  notifyNearbyToVerify?: boolean;
 }
 
 export interface UpdateCampaignRequest {
   title?: string;
+  titleVi?: string;
+  titleEn?: string;
   banner?: string | null;
   description?: string;
+  descriptionVi?: string;
+  descriptionEn?: string;
   status?: GlobalStatus;
   difficulty?: number;
   startDate?: string | null;
@@ -68,8 +66,12 @@ export interface CampaignResponse {
   /** Organization owner profile from identity-service (name, avatar). */
   owner: OrganizationOwnerResponse | null;
   title: string;
+  titleVi?: string | null;
+  titleEn?: string | null;
   banner: string | null;
   description: string | null;
+  descriptionVi?: string | null;
+  descriptionEn?: string | null;
   status: number;
   startDate: Date | null;
   endDate: Date | null;
@@ -91,6 +93,8 @@ export interface CampaignResponse {
   reports: ReportResponse[];
   managers: CampaignManagerBasicResponse[];
   votes: ResourceVoteSummary;
+  /** Community clean / not-clean verification after mark-done (separate from votes). */
+  completionVerification: CampaignCompletionVerificationSummary;
   /**
    * Whether the current user saved this campaign. Null when the viewer is unknown (unauthenticated).
    */
@@ -263,6 +267,8 @@ export interface CampaignOneEnvelopeData {
 
 /** Query params for GET /campaigns (list with filters and pagination). */
 export interface CampaignListQuery {
+  /** Response locale for localized title/description (`en` | `vi`). */
+  lang?: "en" | "vi";
   search?: string;
   status?: number;
   createdBy?: string;

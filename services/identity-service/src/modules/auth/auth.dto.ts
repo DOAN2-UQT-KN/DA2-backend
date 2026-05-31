@@ -84,6 +84,8 @@ export interface RefreshTokenResponse {
   };
 }
 
+import type { NotificationPreferences } from "@da2/constants";
+
 export interface CurrentUserResponse {
   id: string;
   email: string;
@@ -96,7 +98,8 @@ export interface CurrentUserResponse {
   updatedAt: Date;
   latitude: number | null;
   longitude: number | null;
-  locationUpdatedAt: Date | null;
+    locationUpdatedAt: Date | null;
+    notificationPreferences: NotificationPreferences;
 }
 
 export interface TokenPair {

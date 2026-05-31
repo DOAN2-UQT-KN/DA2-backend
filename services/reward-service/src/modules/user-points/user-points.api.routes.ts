@@ -9,7 +9,7 @@ const router = Router();
 
 /**
  * @route   GET /api/v1/me/points
- * @desc    Get current green points balance and total earned greenPoints
+ * @desc    SP wallet balance, green points balance, and lifetime green earned
  * @access  Private
  */
 router.get("/me/points", authenticate, async (req, res): Promise<void> => {

@@ -5,13 +5,14 @@ import {
   REPORT_VOTE_MILESTONE_GREEN_POINT_JOB_TYPE,
   type ReportVoteMilestoneGreenPointsPayload,
 } from "../green-point.types";
+import { gamificationConfigService } from "../../gamification/gamification-config.service";
 import type {
   GreenPointApplyResult,
   GreenPointCreditStrategy,
 } from "./green-point-credit-strategy.types";
 
-function encodeRuleResourceType(threshold: number): string {
-  // Keep under VARCHAR(64) and stable for idempotency unique index.
+function encodeMilestoneResourceType(threshold: number): string {
+  // Per-report idempotency key: one payout per (report, threshold).
   return `REPORT_VOTE_MILESTONE_${threshold}`;
 }
 
@@ -49,42 +50,39 @@ export class ReportVoteMilestoneGreenPointStrategy
     tx: Prisma.TransactionClient,
     payload: ReportVoteMilestoneGreenPointsPayload,
   ): Promise<GreenPointApplyResult> {
-    const rules = await tx.$queryRaw<
-      Array<{ id: string; threshold: number; points: number }>
-    >(
-      Prisma.sql`
-        SELECT id, threshold, points
-        FROM "report_vote_green_point_rules"
-        WHERE "is_active" = true
-        ORDER BY threshold ASC
-      `,
-    );
+    const milestones =
+      await gamificationConfigService.resolveActiveReportVoteMilestoneCredits(
+        payload.voteCount,
+      );
+
+    if (milestones.length === 0) {
+      return { credited: 0, skipped: 0 };
+    }
 
     let credited = 0;
     let skipped = 0;
 
-    for (const rule of rules) {
-      if (rule.threshold > payload.voteCount) break;
-
+    for (const milestone of milestones) {
       const outcome = await applyGreenPointLedgerCredit(tx, {
         userId: payload.reportCreatorUserId,
-        points: rule.points,
+        points: milestone.points,
         transactionType: GreenPointTransactionType.REPORT_VOTE_MILESTONE,
         resourceId: payload.reportId,
-        // Use resourceType as part of idempotency key to allow multiple thresholds per report.
-        resourceType: encodeRuleResourceType(rule.threshold),
+        resourceType: encodeMilestoneResourceType(milestone.threshold),
         metadata: {
-          threshold: rule.threshold,
-          ruleId: rule.id,
+          threshold: milestone.threshold,
+          milestoneIndex: milestone.milestoneIndex,
           voteCountAtAward: payload.voteCount,
         },
       });
 
-      if (outcome === "credited") credited += 1;
-      else skipped += 1;
+      if (outcome === "credited") {
+        credited += 1;
+      } else {
+        skipped += 1;
+      }
     }
 
     return { credited, skipped };
   }
 }
-

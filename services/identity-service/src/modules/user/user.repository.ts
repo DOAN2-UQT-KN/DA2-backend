@@ -55,6 +55,7 @@ export class UserRepository {
     latitude: number | null;
     longitude: number | null;
     locationUpdatedAt: Date | null;
+    notificationPreferences: unknown;
   } | null> {
     return this.prisma.user.findFirst({
       where: { id, deletedAt: null },
@@ -71,7 +72,21 @@ export class UserRepository {
         latitude: true,
         longitude: true,
         locationUpdatedAt: true,
+        notificationPreferences: true,
       },
+    });
+  }
+
+  async findNotificationPrefsByIds(
+    ids: string[],
+  ): Promise<{ id: string; notificationPreferences: unknown }[]> {
+    const unique = [...new Set(ids)].filter(Boolean);
+    if (unique.length === 0) {
+      return [];
+    }
+    return this.prisma.user.findMany({
+      where: { id: { in: unique }, deletedAt: null },
+      select: { id: true, notificationPreferences: true },
     });
   }
 
@@ -107,10 +122,63 @@ export class UserRepository {
     return rows.map((r) => r.id).filter(Boolean);
   }
 
-  async update(id: string, entity: Partial<UserEntity>): Promise<UserEntity> {
+  /**
+   * All active users with distance (meters) from the point; null distance if no stored location.
+   * Parameters: longitude, latitude (degrees).
+   */
+  async findActiveUsersWithDistanceFromPoint(
+    longitude: number,
+    latitude: number,
+  ): Promise<
+    {
+      id: string;
+      email: string;
+      name: string;
+      latitude: number | null;
+      longitude: number | null;
+      distanceMeters: number | null;
+    }[]
+  > {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        id: string;
+        email: string;
+        name: string;
+        latitude: number | null;
+        longitude: number | null;
+        distanceMeters: number | null;
+      }[]
+    >(
+      `
+            SELECT u.id,
+                   u.email,
+                   u.name,
+                   u."latitude",
+                   u."longitude",
+                   CASE
+                     WHEN u."latitude" IS NULL OR u."longitude" IS NULL THEN NULL
+                     ELSE round((6371000 * acos(LEAST(1.0, GREATEST(-1.0,
+                       cos(radians($2)) * cos(radians(u."latitude")) * cos(radians(u."longitude") - radians($1))
+                       + sin(radians($2)) * sin(radians(u."latitude"))
+                     ))))::numeric, 0)
+                   END AS "distanceMeters"
+            FROM users u
+            WHERE u."deletedAt" IS NULL
+            ORDER BY "distanceMeters" ASC NULLS LAST, u.email ASC
+        `,
+      longitude,
+      latitude,
+    );
+    return rows;
+  }
+
+  async update(
+    id: string,
+    data: Prisma.UserUpdateInput,
+  ): Promise<UserEntity> {
     return this.prisma.user.update({
       where: { id },
-      data: entity,
+      data,
     });
   }
 

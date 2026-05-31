@@ -1,4 +1,5 @@
 import axios from "axios";
+import { filterUserIdsForNotificationKind } from "../organization/identity-user.client";
 
 interface SuccessEnvelope<T> {
   success: boolean;
@@ -22,6 +23,14 @@ export async function enqueueReportStatusWebsiteNotification(params: {
         "[incident-service] NOTIFICATION_SERVICE_URL or INTERNAL_NOTIFICATION_API_KEY not set; skipping report status notification",
       );
     }
+    return;
+  }
+
+  const enabled = await filterUserIdsForNotificationKind({
+    userIds: [params.userId],
+    kind: "REPORT_STATUS",
+  });
+  if (enabled.length === 0) {
     return;
   }
 

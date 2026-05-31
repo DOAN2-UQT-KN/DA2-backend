@@ -1,4 +1,7 @@
 import { User } from '@prisma/client';
+import {
+    mergeNotificationPreferences,
+} from '@da2/constants';
 
 // Type-based entity (not class)
 export type UserEntity = User;
@@ -25,4 +28,7 @@ export const toUserResponse = (
     locationUpdatedAt: options?.includeLocation
         ? entity.locationUpdatedAt ?? null
         : null,
+    notificationPreferences: mergeNotificationPreferences(
+        entity.notificationPreferences,
+    ),
 });

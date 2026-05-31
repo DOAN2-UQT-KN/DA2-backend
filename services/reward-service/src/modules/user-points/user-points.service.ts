@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
 import { fetchUsersByIds, getUserProfile } from "../../utils/identity-user.client";
+import { getSpendableSpBalance } from "../gamification/sp-wallet.util";
 import { GreenPointResourceType } from "../green-point/green-point-transaction.constants";
 import {
   fetchCampaignsByIds,
@@ -9,23 +10,34 @@ import {
 
 export class UserPointsService {
   async getPoints(userId: string) {
-    const balance = await prisma.userGreenPointBalance.findUnique({
-      where: { userId }
-    });
-    const aggregate = await prisma.greenPointTransaction.aggregate({
-      _sum: {
-        points: true
-      },
-      where: {
-        userId,
-        points: { gt: 0 },
-        deletedAt: null
-      }
-    });
+    const now = new Date();
+    const [greenBalanceRow, earnedAggregate, spendablePoints] = await Promise.all([
+      prisma.userGreenPointBalance.findUnique({
+        where: { userId },
+      }),
+      prisma.greenPointTransaction.aggregate({
+        _sum: { points: true },
+        where: {
+          userId,
+          points: { gt: 0 },
+          deletedAt: null,
+        },
+      }),
+      prisma.$transaction((tx) => getSpendableSpBalance(tx, userId, now)),
+    ]);
+
+    const greenPoints = greenBalanceRow?.balance ?? 0;
+    const greenPointsEarnedTotal = earnedAggregate._sum.points ?? 0;
 
     return {
-      balance: balance?.balance ?? 0,
-      greenPoints: aggregate._sum.points ?? 0
+      /** Spendable points (SP) — redeem gifts */
+      spendablePoints,
+      /** Current green points balance */
+      greenPoints,
+      /** Lifetime green points earned (positive ledger rows) */
+      greenPointsEarnedTotal,
+      /** @deprecated Use `spendablePoints` — kept for older clients */
+      balance: spendablePoints,
     };
   }
 

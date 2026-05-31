@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { applySpendablePointCredit } from "../gamification/sp-credit.util";
 
 export type LedgerApplyOutcome = "credited" | "skipped";
 
@@ -46,6 +47,8 @@ export async function applyGreenPointLedgerCredit(
     create: { userId: params.userId, balance: params.points },
     update: { balance: { increment: params.points } },
   });
+
+  await applySpendablePointCredit(tx, params);
 
   return "credited";
 }

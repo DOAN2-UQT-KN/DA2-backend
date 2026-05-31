@@ -91,6 +91,12 @@ export class TranslationWorker extends QueueWorker {
           data: data as never,
         });
         return;
+      case TranslationResourceType.CAMPAIGN:
+        await prisma.campaign.update({
+          where: { id: resourceId },
+          data: data as never,
+        });
+        return;
       default:
         throw new Error(
           `Unsupported translation resource type: ${String(resourceType)}`,

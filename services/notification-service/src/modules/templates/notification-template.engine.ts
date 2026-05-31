@@ -87,19 +87,47 @@ export interface RenderedWebsiteParts {
   body: string;
 }
 
+/**
+ * When payload includes `fooEn` / `fooVi`, render `foo` with the matching locale
+ * (fallback: other locale, then base `foo`).
+ */
+function payloadForLocale(
+  data: Record<string, string>,
+  locale: NotificationLocale,
+): Record<string, string> {
+  const out = { ...data };
+  const baseKeys = new Set(
+    Object.keys(data).filter((k) => !k.endsWith("En") && !k.endsWith("Vi")),
+  );
+  for (const key of baseKeys) {
+    const en = data[`${key}En`];
+    const vi = data[`${key}Vi`];
+    if (en === undefined && vi === undefined) {
+      continue;
+    }
+    if (locale === "vi") {
+      out[key] = vi || en || data[key] || "";
+    } else {
+      out[key] = en || vi || data[key] || "";
+    }
+  }
+  return out;
+}
+
 export class NotificationTemplateEngine {
   renderWebsiteTemplates(
     kind: NotificationKind,
     data: Record<string, string>,
     locale: NotificationLocale,
   ): RenderedWebsiteParts {
+    const localizedData = payloadForLocale(data, locale);
     const titlePath = resolveWebsiteTemplatePath(kind, "title", locale);
     const bodyPath = resolveWebsiteTemplatePath(kind, "body", locale);
     const titleTpl = compileFile(titlePath, `${titlePath}|tpl`);
     const bodyTpl = compileFile(bodyPath, `${bodyPath}|tpl`);
     return {
-      title: titleTpl(data),
-      body: bodyTpl(data),
+      title: titleTpl(localizedData),
+      body: bodyTpl(localizedData),
     };
   }
 
