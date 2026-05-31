@@ -3,11 +3,65 @@ import type { LeaderboardMetric, SeasonKind } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
 
+export type ReportVoteMilestoneCredit = {
+  /** Upvote count threshold from admin config. */
+  threshold: number;
+  /** 1-based index among configured thresholds (first crossed = 1, second = 2, …). */
+  milestoneIndex: number;
+  /** Green points for the report creator at this milestone. */
+  points: number;
+};
+
+/**
+ * Resolve milestone payouts for one report from active admin point rules.
+ * Each report is evaluated independently via `reportId` in the ledger.
+ */
+export function resolveReportVoteMilestoneCredits(
+  voteCount: number,
+  rules: {
+    baseReportPoint: number;
+    reportMilestoneThresholds: number[];
+  } | null,
+): ReportVoteMilestoneCredit[] {
+  if (!rules || rules.baseReportPoint <= 0 || voteCount <= 0) {
+    return [];
+  }
+
+  const sorted = [...rules.reportMilestoneThresholds].sort((a, b) => a - b);
+  const credits: ReportVoteMilestoneCredit[] = [];
+
+  sorted.forEach((threshold, index) => {
+    if (threshold > voteCount) {
+      return;
+    }
+    const milestoneIndex = index + 1;
+    const points = rules.baseReportPoint * milestoneIndex;
+    if (points > 0) {
+      credits.push({ threshold, milestoneIndex, points });
+    }
+  });
+
+  return credits;
+}
+
 export class GamificationConfigService {
   async getActivePointRules() {
     return prisma.gamificationPointRules.findFirst({
       where: { isActive: true },
       orderBy: { effectiveFrom: "desc" },
+    });
+  }
+
+  async resolveActiveReportVoteMilestoneCredits(
+    voteCount: number,
+  ): Promise<ReportVoteMilestoneCredit[]> {
+    const rules = await this.getActivePointRules();
+    if (!rules) {
+      return [];
+    }
+    return resolveReportVoteMilestoneCredits(voteCount, {
+      baseReportPoint: rules.baseReportPoint,
+      reportMilestoneThresholds: rules.reportMilestoneThresholds,
     });
   }
 
@@ -19,28 +73,76 @@ export class GamificationConfigService {
     const existing = await this.getActivePointRules();
     const thresholds = [...body.reportMilestoneThresholds].sort((a, b) => a - b);
 
-    if (existing) {
-      return prisma.gamificationPointRules.update({
-        where: { id: existing.id },
-        data: {
-          baseReportPoint: body.baseReportPoint,
-          reportMilestoneThresholds: thresholds,
-          volunteerBonusCapByDifficulty:
-            body.volunteerBonusCapByDifficulty ?? undefined,
-        },
-      });
+    const saved = existing
+      ? await prisma.gamificationPointRules.update({
+          where: { id: existing.id },
+          data: {
+            baseReportPoint: body.baseReportPoint,
+            reportMilestoneThresholds: thresholds,
+            volunteerBonusCapByDifficulty:
+              body.volunteerBonusCapByDifficulty ?? undefined,
+          },
+        })
+      : await prisma.gamificationPointRules.create({
+          data: {
+            id: randomUUID(),
+            baseReportPoint: body.baseReportPoint,
+            reportMilestoneThresholds: thresholds,
+            volunteerBonusCapByDifficulty:
+              body.volunteerBonusCapByDifficulty ?? undefined,
+            isActive: true,
+          },
+        });
+
+    await this.syncLegacyReportVoteGreenPointRules(
+      body.baseReportPoint,
+      thresholds,
+    );
+
+    return saved;
+  }
+
+  /**
+   * Keeps `report_vote_green_point_rules` aligned for ops/scripts; worker reads gamification rules.
+   */
+  private async syncLegacyReportVoteGreenPointRules(
+    baseReportPoint: number,
+    thresholds: number[],
+  ): Promise<void> {
+    if (thresholds.length === 0) {
+      await prisma.$executeRaw(
+        Prisma.sql`
+          UPDATE "report_vote_green_point_rules"
+          SET "is_active" = false
+        `,
+      );
+      return;
     }
 
-    return prisma.gamificationPointRules.create({
-      data: {
-        id: randomUUID(),
-        baseReportPoint: body.baseReportPoint,
-        reportMilestoneThresholds: thresholds,
-        volunteerBonusCapByDifficulty:
-          body.volunteerBonusCapByDifficulty ?? undefined,
-        isActive: true,
-      },
-    });
+    for (let index = 0; index < thresholds.length; index++) {
+      const threshold = thresholds[index];
+      const points = baseReportPoint * (index + 1);
+      await prisma.$executeRaw(
+        Prisma.sql`
+          INSERT INTO "report_vote_green_point_rules"
+            (id, threshold, points, "is_active")
+          VALUES
+            (${randomUUID()}::uuid, ${threshold}, ${points}, true)
+          ON CONFLICT (threshold)
+          DO UPDATE SET
+            points = EXCLUDED.points,
+            "is_active" = true
+        `,
+      );
+    }
+
+    await prisma.$executeRaw(
+      Prisma.sql`
+        UPDATE "report_vote_green_point_rules"
+        SET "is_active" = false
+        WHERE threshold NOT IN (${Prisma.join(thresholds)})
+      `,
+    );
   }
 
   async getActiveSpRules() {

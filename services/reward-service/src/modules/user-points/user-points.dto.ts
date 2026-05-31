@@ -1,8 +1,14 @@
 import { GreenPointTransaction } from "@prisma/client";
 
 export interface MyPointsResponse {
-  balance: number;
+  /** SP wallet balance (gift redemption) */
+  spendablePoints: number;
+  /** Current green points balance */
   greenPoints: number;
+  /** Sum of positive green-point ledger rows */
+  greenPointsEarnedTotal: number;
+  /** @deprecated Use spendablePoints */
+  balance: number;
 }
 
 export interface MyPointsEnvelopeData {

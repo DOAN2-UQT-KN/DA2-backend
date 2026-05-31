@@ -360,11 +360,16 @@ export async function getGamificationLeaderboardMe(
   }
   const seasonId =
     typeof req.query.seasonId === "string" ? req.query.seasonId : undefined;
+  const organizationId =
+    typeof req.query.organizationId === "string"
+      ? req.query.organizationId
+      : undefined;
   try {
     const leaderboardMe = await gamificationLeaderboardService.getLeaderboardMe(
       userId,
       metric,
       seasonId,
+      organizationId,
     );
     sendSuccess(res, HTTP_STATUS.OK, { leaderboardMe });
   } catch (e) {
