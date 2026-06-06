@@ -1,7 +1,8 @@
-import { Gift, Media, Prisma } from "@prisma/client";
+import { Gift, GiftRedemption, GiftRedemptionStatus, Media, Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 import prisma from "../../config/prisma.client";
 import { HTTP_STATUS, HttpError } from "../../constants/http-status";
+import { fetchUsersByIds, getUserProfile } from "../../utils/identity-user.client";
 import { badgeService } from "../gamification/badge.service";
 import {
   getSpendableSpBalance,
@@ -12,10 +13,13 @@ import {
   GreenPointTransactionType,
 } from "../green-point/green-point-transaction.constants";
 import {
+  AdminGiftRedemptionListItemResponse,
   CreateGiftBody,
   GiftRedemptionListItemResponse,
+  GiftRedemptionGiftSnapshot,
   GiftRedemptionResponse,
   GiftResponse,
+  RedeemGiftBody,
   toGiftRedemptionResponse,
   toGiftResponse,
   UpdateGiftBody,
@@ -69,6 +73,60 @@ export type ListGiftsParams = {
   sortBy?: "createdAt" | "name" | "greenPoints";
   sortOrder?: "asc" | "desc";
 };
+
+export type ListGiftRedemptionsParams = {
+  page: number;
+  limit: number;
+  status?: GiftRedemptionStatus;
+  sortBy?: "createdAt" | "greenPointsSpent" | "statusUpdatedAt";
+  sortOrder?: "asc" | "desc";
+};
+
+const REDEMPTION_STATUS_TRANSITIONS: Record<
+  GiftRedemptionStatus,
+  GiftRedemptionStatus[]
+> = {
+  PROCESSING: ["SHIPPED", "CANCELLED"],
+  SHIPPED: ["DELIVERED", "CANCELLED"],
+  DELIVERED: [],
+  CANCELLED: [],
+};
+
+type GiftRedemptionWithGift = GiftRedemption & { gift: Gift | null };
+
+function toGiftSnapshot(gift: Gift | null): GiftRedemptionGiftSnapshot | null {
+  if (!gift) {
+    return null;
+  }
+  return {
+    id: gift.id,
+    name: gift.name,
+    nameVi: (gift as any).nameVi ?? gift.name,
+    nameEn: (gift as any).nameEn,
+    description: gift.description,
+    descriptionVi: (gift as any).descriptionVi ?? gift.description,
+    descriptionEn: (gift as any).descriptionEn,
+    mediaId: gift.mediaId,
+    greenPoints: gift.greenPoints,
+  };
+}
+
+function toGiftRedemptionListItem(
+  r: GiftRedemptionWithGift,
+): GiftRedemptionListItemResponse {
+  return {
+    id: r.id,
+    giftId: r.giftId,
+    greenPointsSpent: r.greenPointsSpent,
+    phoneNumber: r.phoneNumber,
+    pickupLocation: r.pickupLocation,
+    status: r.status,
+    statusUpdatedAt: r.statusUpdatedAt.toISOString(),
+    cancelledAt: r.cancelledAt?.toISOString() ?? null,
+    createdAt: r.createdAt.toISOString(),
+    gift: toGiftSnapshot(r.gift),
+  };
+}
 
 export class GiftService {
   private async mapGiftsWithMediaByMediaId(
@@ -187,7 +245,7 @@ export class GiftService {
     userId: string,
     page: number,
     limit: number,
-    sortBy: "createdAt" | "greenPointsSpent" = "createdAt",
+    sortBy: "createdAt" | "greenPointsSpent" | "statusUpdatedAt" = "createdAt",
     sortOrder: "asc" | "desc" = "desc",
   ): Promise<{ redemptions: GiftRedemptionListItemResponse[]; total: number }> {
     const skip = (page - 1) * limit;
@@ -204,25 +262,47 @@ export class GiftService {
       prisma.giftRedemption.count({ where }),
     ]);
 
-    const redemptions: GiftRedemptionListItemResponse[] = rows.map((r) => ({
-      id: r.id,
-      giftId: r.giftId,
-      greenPointsSpent: r.greenPointsSpent,
-      createdAt: r.createdAt.toISOString(),
-      gift: r.gift
-        ? {
-            id: r.gift.id,
-            name: r.gift.name,
-            nameVi: (r.gift as any).nameVi ?? r.gift.name,
-            nameEn: (r.gift as any).nameEn,
-            description: r.gift.description,
-            descriptionVi: (r.gift as any).descriptionVi ?? r.gift.description,
-            descriptionEn: (r.gift as any).descriptionEn,
-            mediaId: r.gift.mediaId,
-            greenPoints: r.gift.greenPoints,
-          }
-        : null,
-    }));
+    const redemptions = rows.map((r) => toGiftRedemptionListItem(r));
+
+    return { redemptions, total };
+  }
+
+  async listRedemptionsForAdmin(
+    params: ListGiftRedemptionsParams,
+  ): Promise<{ redemptions: AdminGiftRedemptionListItemResponse[]; total: number }> {
+    const skip = (params.page - 1) * params.limit;
+    const where: Prisma.GiftRedemptionWhereInput = {
+      ...(params.status ? { status: params.status } : {}),
+    };
+    const sortBy = params.sortBy ?? "createdAt";
+    const sortOrder = params.sortOrder ?? "desc";
+
+    const [rows, total] = await Promise.all([
+      prisma.giftRedemption.findMany({
+        where,
+        orderBy: { [sortBy]: sortOrder },
+        skip,
+        take: params.limit,
+        include: { gift: true },
+      }),
+      prisma.giftRedemption.count({ where }),
+    ]);
+
+    const profileMap = await fetchUsersByIds(rows.map((r) => r.userId));
+    const redemptions: AdminGiftRedemptionListItemResponse[] = rows.map((r) => {
+      const profile = getUserProfile(profileMap, r.userId);
+      return {
+        ...toGiftRedemptionListItem(r),
+        userId: r.userId,
+        user: profile
+          ? {
+              id: profile.id,
+              name: profile.name,
+              avatar: profile.avatar,
+            }
+          : null,
+      };
+    });
 
     return { redemptions, total };
   }
@@ -408,8 +488,11 @@ export class GiftService {
   async redeem(
     userId: string,
     giftId: string,
+    body: RedeemGiftBody,
   ): Promise<GiftRedemptionResponse> {
     const discountBps = await badgeService.getBestStoreDiscountBps(userId);
+    const phoneNumber = body.phoneNumber.trim();
+    const pickupLocation = body.pickupLocation.trim();
 
     return prisma.$transaction(
       async (tx) => {
@@ -458,6 +541,10 @@ export class GiftService {
             userId,
             giftId: gift.id,
             greenPointsSpent: effectiveSp,
+            phoneNumber,
+            pickupLocation,
+            status: "PROCESSING",
+            statusUpdatedAt: now,
           },
         });
 
@@ -497,6 +584,103 @@ export class GiftService {
         }
 
         return toGiftRedemptionResponse(redemption);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async updateRedemptionStatus(
+    id: string,
+    nextStatus: GiftRedemptionStatus,
+  ): Promise<GiftRedemptionResponse | null> {
+    return prisma.$transaction(
+      async (tx) => {
+        const redemption = await tx.giftRedemption.findUnique({ where: { id } });
+        if (!redemption) {
+          return null;
+        }
+
+        if (redemption.status === nextStatus) {
+          return toGiftRedemptionResponse(redemption);
+        }
+
+        const allowed = REDEMPTION_STATUS_TRANSITIONS[redemption.status];
+        if (!allowed.includes(nextStatus)) {
+          throw new HttpError(
+            HTTP_STATUS.UNPROCESSABLE_ENTITY.withMessage(
+              `Cannot change redemption status from ${redemption.status} to ${nextStatus}`,
+            ),
+          );
+        }
+
+        const now = new Date();
+        const updated = await tx.giftRedemption.update({
+          where: { id },
+          data: {
+            status: nextStatus,
+            statusUpdatedAt: now,
+            cancelledAt: nextStatus === "CANCELLED" ? now : null,
+          },
+        });
+
+        if (nextStatus === "CANCELLED" && redemption.greenPointsSpent > 0) {
+          const idempotencyKey = `gift_redeem_refund_sp:${redemption.id}`;
+          const existingRefund = await tx.userPointTransaction.findFirst({
+            where: { userId: redemption.userId, idempotencyKey },
+          });
+
+          if (!existingRefund) {
+            const spRule = await tx.spendablePointRules.findFirst({
+              where: { isActive: true },
+              orderBy: { effectiveFrom: "desc" },
+            });
+            const expirationDays = spRule?.expirationDays ?? 90;
+            const expiresAt = new Date(now);
+            expiresAt.setUTCDate(expiresAt.getUTCDate() + expirationDays);
+
+            await tx.userPointTransaction.create({
+              data: {
+                id: randomUUID(),
+                userId: redemption.userId,
+                kind: "SP",
+                amount: redemption.greenPointsSpent,
+                sourceType: "STORE",
+                sourceId: redemption.id,
+                seasonId: null,
+                metadata: {
+                  giftId: redemption.giftId,
+                  redemptionId: redemption.id,
+                  refundReason: "GIFT_REDEMPTION_CANCELLED",
+                } as Prisma.InputJsonValue,
+                idempotencyKey,
+              },
+            });
+
+            await tx.userSpWalletEntry.create({
+              data: {
+                id: randomUUID(),
+                userId: redemption.userId,
+                amount: redemption.greenPointsSpent,
+                remaining: redemption.greenPointsSpent,
+                sourceType: "STORE",
+                sourceId: redemption.id,
+                expiresAt,
+              },
+            });
+
+            await tx.greenPointTransaction.create({
+              data: {
+                userId: redemption.userId,
+                type: GreenPointTransactionType.GIFT_REDEEM_REFUND,
+                resourceId: redemption.id,
+                resourceType: GreenPointResourceType.GIFT_REDEMPTION,
+                points: redemption.greenPointsSpent,
+              },
+            });
+          }
+        }
+
+        return toGiftRedemptionResponse(updated);
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );

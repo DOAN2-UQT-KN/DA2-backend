@@ -1,4 +1,4 @@
-import { Gift, GiftRedemption, Media } from "@prisma/client";
+import { Gift, GiftRedemption, GiftRedemptionStatus, Media } from "@prisma/client";
 
 type GiftWithOptionalMedia = Gift & {
   media?: Media | null;
@@ -74,6 +74,11 @@ export interface GiftRedemptionResponse {
   id: string;
   giftId: string;
   greenPointsSpent: number;
+  phoneNumber: string;
+  pickupLocation: string;
+  status: GiftRedemptionStatus;
+  statusUpdatedAt: string;
+  cancelledAt: string | null;
   createdAt: string;
 }
 
@@ -83,8 +88,18 @@ export const toGiftRedemptionResponse = (
   id: row.id,
   giftId: row.giftId,
   greenPointsSpent: row.greenPointsSpent,
+  phoneNumber: row.phoneNumber,
+  pickupLocation: row.pickupLocation,
+  status: row.status,
+  statusUpdatedAt: row.statusUpdatedAt.toISOString(),
+  cancelledAt: row.cancelledAt?.toISOString() ?? null,
   createdAt: row.createdAt.toISOString(),
 });
+
+export interface RedeemGiftBody {
+  phoneNumber: string;
+  pickupLocation: string;
+}
 
 /** Query string for `GET /api/v1/gifts` (pagination + filters). */
 export interface GiftListQuery {
@@ -141,10 +156,28 @@ export interface GiftRedemptionGiftSnapshot {
 
 export interface GiftRedemptionListItemResponse {
   id: string;
+  userId?: string;
   giftId: string;
   greenPointsSpent: number;
+  phoneNumber: string;
+  pickupLocation: string;
+  status: GiftRedemptionStatus;
+  statusUpdatedAt: string;
+  cancelledAt: string | null;
   createdAt: string;
   gift: GiftRedemptionGiftSnapshot | null;
+}
+
+export interface GiftRedemptionUserSnapshot {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
+
+export interface AdminGiftRedemptionListItemResponse
+  extends GiftRedemptionListItemResponse {
+  userId: string;
+  user: GiftRedemptionUserSnapshot | null;
 }
 
 export interface MyGreenPointsEnvelopeData {
@@ -154,10 +187,22 @@ export interface MyGreenPointsEnvelopeData {
 export interface MyGiftRedemptionsQuery {
   page?: number;
   limit?: number;
-  sortBy?: "createdAt" | "greenPointsSpent";
+  sortBy?: "createdAt" | "greenPointsSpent" | "statusUpdatedAt";
   sortOrder?: "asc" | "desc";
 }
 
 export interface MyGiftRedemptionsEnvelopeData extends GiftListMeta {
   redemptions: GiftRedemptionListItemResponse[];
+}
+
+export interface AdminGiftRedemptionsQuery extends MyGiftRedemptionsQuery {
+  status?: GiftRedemptionStatus;
+}
+
+export interface AdminGiftRedemptionsEnvelopeData extends GiftListMeta {
+  redemptions: AdminGiftRedemptionListItemResponse[];
+}
+
+export interface PatchGiftRedemptionStatusBody {
+  status: GiftRedemptionStatus;
 }

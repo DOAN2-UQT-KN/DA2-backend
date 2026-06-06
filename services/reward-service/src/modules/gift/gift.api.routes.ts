@@ -14,6 +14,12 @@ import { requireAdmin } from "../../middleware/require-admin.middleware";
 import { giftService } from "./gift.service";
 
 const router = Router();
+const GIFT_REDEMPTION_STATUSES = [
+  "PROCESSING",
+  "SHIPPED",
+  "DELIVERED",
+  "CANCELLED",
+] as const;
 
 /**
  * @route   GET /api/v1/gifts
@@ -288,7 +294,10 @@ async function handleGiftRedeemOrExchange(
   }
 
   try {
-    const redemption = await giftService.redeem(userId, id);
+    const redemption = await giftService.redeem(userId, id, {
+      phoneNumber: req.body.phoneNumber,
+      pickupLocation: req.body.pickupLocation,
+    });
     sendSuccess(res, HTTP_STATUS.OK, { redemption });
   } catch (error) {
     if (sendHttpErrorResponse(res, error)) {
@@ -300,6 +309,100 @@ async function handleGiftRedeemOrExchange(
 }
 
 /**
+ * @route   GET /api/v1/admin/gift-redemptions
+ * @desc    List gift redemption orders for admin management
+ * @access  Private (Admin)
+ */
+router.get(
+  "/admin/gift-redemptions",
+  authenticate,
+  requireAdmin,
+  query("page").optional().isInt({ min: 1 }).toInt(),
+  query("limit").optional().isInt({ min: 1, max: 100 }).toInt(),
+  query("status").optional().isIn(GIFT_REDEMPTION_STATUSES),
+  query("sortBy").optional().isIn(["createdAt", "greenPointsSpent", "statusUpdatedAt"]),
+  query("sortOrder").optional().isIn(["asc", "desc"]),
+  async (req, res): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+        errors: errors.array(),
+      });
+      return;
+    }
+
+    const page = (req.query.page as number | undefined) ?? 1;
+    const limit = (req.query.limit as number | undefined) ?? 20;
+    const status = req.query.status as (typeof GIFT_REDEMPTION_STATUSES)[number] | undefined;
+    const sortBy =
+      (req.query.sortBy as "createdAt" | "greenPointsSpent" | "statusUpdatedAt" | undefined) ??
+      "createdAt";
+    const sortOrder = (req.query.sortOrder as "asc" | "desc" | undefined) ?? "desc";
+
+    try {
+      const { redemptions, total } = await giftService.listRedemptionsForAdmin({
+        page,
+        limit,
+        status,
+        sortBy,
+        sortOrder,
+      });
+      const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+      sendSuccess(res, HTTP_STATUS.OK, {
+        redemptions,
+        page,
+        limit,
+        total,
+        totalPages,
+      });
+    } catch (error) {
+      console.error("List admin gift redemptions error:", error);
+      sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    }
+  },
+);
+
+/**
+ * @route   PATCH /api/v1/admin/gift-redemptions/:id/status
+ * @desc    Update gift redemption order status
+ * @access  Private (Admin)
+ */
+router.patch(
+  "/admin/gift-redemptions/:id/status",
+  authenticate,
+  requireAdmin,
+  param("id").isUUID().withMessage("id must be a UUID"),
+  body("status").isIn(GIFT_REDEMPTION_STATUSES),
+  async (req, res): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+        errors: errors.array(),
+      });
+      return;
+    }
+
+    try {
+      const updated = await giftService.updateRedemptionStatus(
+        req.params.id,
+        req.body.status,
+      );
+      if (!updated) {
+        sendError(res, HTTP_STATUS.NOT_FOUND.withMessage("Redemption not found"));
+        return;
+      }
+      sendSuccess(res, HTTP_STATUS.OK, { redemption: updated });
+    } catch (error) {
+      if (sendHttpErrorResponse(res, error)) {
+        return;
+      }
+      console.error("Update gift redemption status error:", error);
+      sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    }
+  },
+);
+
+/**
  * @route   POST /api/v1/gifts/:id/redeem
  * @desc    Redeem a gift (SP wallet FIFO after badge discount; mirrors legacy green-point ledger)
  * @access  Private
@@ -308,6 +411,17 @@ router.post(
   "/gifts/:id/redeem",
   authenticate,
   param("id").isUUID().withMessage("id must be a UUID"),
+  body("phoneNumber")
+    .isString()
+    .trim()
+    .isLength({ min: 7, max: 32 })
+    .matches(/^[0-9+\-()\s.]+$/)
+    .withMessage("phoneNumber must be a valid phone number"),
+  body("pickupLocation")
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 1000 })
+    .withMessage("pickupLocation is required"),
   handleGiftRedeemOrExchange,
 );
 
@@ -320,6 +434,17 @@ router.post(
   "/gifts/:id/exchange",
   authenticate,
   param("id").isUUID().withMessage("id must be a UUID"),
+  body("phoneNumber")
+    .isString()
+    .trim()
+    .isLength({ min: 7, max: 32 })
+    .matches(/^[0-9+\-()\s.]+$/)
+    .withMessage("phoneNumber must be a valid phone number"),
+  body("pickupLocation")
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 1000 })
+    .withMessage("pickupLocation is required"),
   handleGiftRedeemOrExchange,
 );
 
