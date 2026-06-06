@@ -9,6 +9,7 @@ export const GreenPointTransactionType = {
   REPORT_VOTE_MILESTONE: "REPORT_VOTE_MILESTONE",
   REFERRAL: "REFERRAL",
   GIFT_REDEEM: "GIFT_REDEEM",
+  GIFT_REDEEM_REFUND: "GIFT_REDEEM_REFUND",
 } as const;
 
 export type GreenPointTransactionTypeName =

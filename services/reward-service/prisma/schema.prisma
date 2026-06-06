@@ -139,13 +139,31 @@ model GiftRedemption {
 
   greenPointsSpent Int @map("green_points_spent")
 
+  phoneNumber String @map("phone_number") @db.VarChar(32)
+
+  pickupLocation String @map("pickup_location") @db.Text
+
+  status GiftRedemptionStatus @default(PROCESSING)
+
+  statusUpdatedAt DateTime @default(now()) @map("status_updated_at")
+
+  cancelledAt DateTime? @map("cancelled_at")
+
   createdAt DateTime @default(now()) @map("created_at")
 
   gift Gift @relation(fields: [giftId], references: [id], onDelete: Restrict)
 
   @@index([userId])
   @@index([giftId])
+  @@index([status, createdAt])
   @@map("gift_redemptions")
+}
+
+enum GiftRedemptionStatus {
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
 }
 
 /// Outbox + tracking for reward-service background jobs (e.g. green-point SQS worker, @da2/queue).

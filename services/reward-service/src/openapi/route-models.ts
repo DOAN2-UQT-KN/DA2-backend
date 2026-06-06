@@ -24,9 +24,19 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
     responseData: "GiftOneEnvelopeData",
   },
   "POST /api/v1/gifts/:id/redeem": {
+    requestBody: "RedeemGiftBody",
     responseData: "GiftRedemptionOneEnvelopeData",
   },
   "POST /api/v1/gifts/:id/exchange": {
+    requestBody: "RedeemGiftBody",
+    responseData: "GiftRedemptionOneEnvelopeData",
+  },
+  "GET /api/v1/admin/gift-redemptions": {
+    query: "AdminGiftRedemptionsQuery",
+    responseData: "AdminGiftRedemptionsEnvelopeData",
+  },
+  "PATCH /api/v1/admin/gift-redemptions/:id/status": {
+    requestBody: "PatchGiftRedemptionStatusBody",
     responseData: "GiftRedemptionOneEnvelopeData",
   },
   "GET /api/v1/me/points": {
