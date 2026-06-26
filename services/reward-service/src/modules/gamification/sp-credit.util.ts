@@ -1,21 +1,9 @@
 import { randomUUID } from "crypto";
-import type { PointSourceType, Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { Prisma as PrismaClient } from "@prisma/client";
-import { GreenPointResourceType } from "../green-point/green-point-transaction.constants";
+import { mapResourceTypeToSourceType } from "./point-source.util";
 
 export type SpCreditOutcome = "credited" | "skipped";
-
-function mapResourceTypeToSourceType(
-  resourceType: string,
-): PointSourceType {
-  if (resourceType === GreenPointResourceType.CAMPAIGN) {
-    return "CAMPAIGN";
-  }
-  if (resourceType === GreenPointResourceType.REPORT) {
-    return "REPORT";
-  }
-  return "SYSTEM";
-}
 
 /**
  * Idempotent SP credit (ledger + wallet batch). Mirrors green-point earnings 1:1.

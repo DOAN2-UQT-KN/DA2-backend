@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { seedMetricMetadata } from "./seeds/metric-metadata.seed";
 

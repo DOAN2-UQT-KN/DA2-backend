@@ -232,6 +232,13 @@ app.use(
 );
 
 app.use(
+  "/api/v1/admin/gift-redemptions",
+  proxy(REWARD_SERVICE_URL, {
+    proxyReqPathResolver: (req) => `/api/v1/admin/gift-redemptions${req.url}`,
+  }),
+);
+
+app.use(
   "/api/v1/leaderboard",
   proxy(REWARD_SERVICE_URL, {
     proxyReqPathResolver: (req) => `/api/v1/leaderboard${req.url}`,

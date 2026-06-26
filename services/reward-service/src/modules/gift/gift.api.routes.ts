@@ -365,12 +365,11 @@ router.get(
 /**
  * @route   PATCH /api/v1/admin/gift-redemptions/:id/status
  * @desc    Update gift redemption order status
- * @access  Private (Admin)
+ * @access  Private
  */
 router.patch(
   "/admin/gift-redemptions/:id/status",
   authenticate,
-  requireAdmin,
   param("id").isUUID().withMessage("id must be a UUID"),
   body("status").isIn(GIFT_REDEMPTION_STATUSES),
   async (req, res): Promise<void> => {
