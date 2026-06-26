@@ -5,12 +5,18 @@ import prisma from "./config/prisma.client";
  * Queue registration is self-contained: importing register is sufficient.
  */
 import { startAllQueues } from "./queue/register";
+import {
+  startOutboxRelay,
+  stopOutboxRelay,
+} from "./outbox/outbox-relay.bootstrap";
 
 console.log("Worker started");
 startAllQueues();
+startOutboxRelay();
 
 const shutdown = async (signal: string): Promise<void> => {
   console.log(`[Worker] received ${signal}, shutting down`);
+  await stopOutboxRelay();
   await prisma.$disconnect();
   process.exit(0);
 };

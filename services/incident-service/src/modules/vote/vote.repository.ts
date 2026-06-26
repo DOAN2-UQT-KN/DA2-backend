@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import prisma from "../../config/prisma.client";
 
 export class VoteRepository {
@@ -84,15 +84,19 @@ export class VoteRepository {
     resourceType: string,
     resourceId: string,
     value: number,
+    client: Prisma.TransactionClient = this.prisma,
   ) {
-    const existing = await this.findActive(userId, resourceType, resourceId);
+    const existing = await client.vote.findFirst({
+      where: { userId, resourceType, resourceId, deletedAt: null },
+      select: { id: true, value: true },
+    });
     if (existing) {
-      return this.prisma.vote.update({
+      return client.vote.update({
         where: { id: existing.id },
         data: { value },
       });
     }
-    return this.prisma.vote.create({
+    return client.vote.create({
       data: {
         userId,
         resourceType,

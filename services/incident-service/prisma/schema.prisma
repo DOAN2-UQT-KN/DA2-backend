@@ -463,6 +463,35 @@ model BackgroundJob {
   @@map("background_jobs")
 }
 
+/// Transactional outbox: rows are written in the SAME transaction as the
+/// business change, then a relay delivers them to other services (at-least-once).
+model OutboxEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  aggregateType String @map("aggregate_type") @db.VarChar(50)
+  aggregateId   String @map("aggregate_id") @db.Uuid
+
+  /// Reuses the downstream (reward) job-type string, e.g. REPORT_COMPLETION_GREEN_POINTS.
+  eventType String @map("event_type") @db.VarChar(100)
+  payload   Json
+
+  /// Deterministic key so re-emits / reconciliation never duplicate a row.
+  dedupKey String @unique @map("dedup_key")
+
+  status      Int      @default(12)
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(10) @map("max_attempts")
+  runAfter    DateTime @default(now()) @map("run_after")
+  lastError   String?  @map("last_error")
+
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, runAfter])
+  @@map("outbox_events")
+}
+
 model Vote {
   id             String    @id @default(uuid()) @db.Uuid
   userId         String    @map("user_id") @db.Uuid

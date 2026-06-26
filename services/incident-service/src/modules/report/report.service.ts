@@ -38,8 +38,9 @@ import {
   getUserProfile,
 } from "../organization/identity-user.client";
 import type { OrganizationOwnerResponse } from "../organization/organization.dto";
-import { rewardServiceClient } from "../reward/reward-service.client";
 import { enqueueReportStatusWebsiteNotification } from "./report-status-notify.client";
+import { emitOutbox } from "../../outbox/outbox.writer";
+import { OutboxEventType } from "../../outbox/outbox.types";
 
 /**
  * Best-effort enqueue of a TRANSLATE_TEXT job. Failure is logged but does NOT
@@ -733,28 +734,27 @@ export class ReportService {
       return this.withReportVote(toReportResponse(existing), viewerUserId);
     }
 
-    const previousStatus = existing.status;
-    const report = await reportRepository.markReportAsDone(id);
+    const points = Number(process.env.REPORT_COMPLETION_GREEN_POINTS ?? 0) || 0;
 
-    // Credit green points to the report owner (idempotent at reward-service ledger level).
+    // Mark done and emit the green-point credit event atomically. The outbox
+    // relay delivers it to reward-service, so "done" stays done even if reward
+    // is down — no rollback of business state.
+    const report = await prisma.$transaction(async (tx) => {
+      const updated = await reportRepository.markReportAsDone(id, tx);
+      if (updated.userId) {
+        await emitOutbox(tx, {
+          aggregateType: "report",
+          aggregateId: updated.id,
+          eventType: OutboxEventType.REPORT_COMPLETION_GREEN_POINTS,
+          payload: { reportId: updated.id, userId: updated.userId, points },
+          dedupKey: `${OutboxEventType.REPORT_COMPLETION_GREEN_POINTS}:${updated.id}`,
+        });
+      }
+      return updated;
+    });
+
     const recipientUserId = report.userId;
     if (recipientUserId) {
-      const points =
-        Number(process.env.REPORT_COMPLETION_GREEN_POINTS ?? 0) || 0;
-      try {
-        await rewardServiceClient.enqueueReportCompletionGreenPoints({
-          reportId: report.id,
-          userId: recipientUserId,
-          points,
-        });
-      } catch (e) {
-        // Roll back status when reward enqueue fails to keep "done" consistent with rewards.
-        await reportRepository.update(id, {
-          status: previousStatus ?? ReportStatus._STATUS_TODO,
-        });
-        throw e;
-      }
-
       // Best-effort in-app message; do not block the main action if notifications fail.
       try {
         await enqueueReportStatusWebsiteNotification({

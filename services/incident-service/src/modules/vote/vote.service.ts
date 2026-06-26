@@ -1,17 +1,20 @@
+import { Prisma } from "@prisma/client";
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 import {
   VoteResourceType,
   VoteValue,
 } from "../../constants/status.enum";
+import prisma from "../../config/prisma.client";
 import { campaignRepository } from "../campaign/campaign.repository";
 import { reportRepository } from "../report/report.repository";
-import { rewardServiceClient } from "../reward/reward-service.client";
 import {
   VoteActionBody,
   VoteActionResponse,
   ResourceVoteSummary,
 } from "./vote.dto";
 import { voteRepository } from "./vote.repository";
+import { emitOutbox } from "../../outbox/outbox.writer";
+import { OutboxEventType } from "../../outbox/outbox.types";
 
 export class VoteService {
   /**
@@ -76,45 +79,51 @@ export class VoteService {
     throw new HttpError(HTTP_STATUS.INVALID_INPUT);
   }
 
-  private async enqueueReportVoteMilestoneIfNeeded(args: {
-    resourceType: VoteResourceType;
-    resourceId: string;
-    newValue: number;
-  }): Promise<void> {
-    // Report creator bonus: evaluate admin vote milestones for this report only.
+  /**
+   * Report creator bonus: emit a vote-milestone green-point event inside the
+   * same transaction as the vote write. Counts are read post-upsert via `tx`
+   * so the event carries the fresh upvote total. The reward worker is
+   * idempotent per (reportId, voteCount) milestone.
+   */
+  private async emitReportVoteMilestoneIfNeeded(
+    tx: Prisma.TransactionClient,
+    args: {
+      resourceType: VoteResourceType;
+      resourceId: string;
+      newValue: number;
+    },
+  ): Promise<void> {
     if (args.resourceType !== VoteResourceType.REPORT) return;
     if (args.newValue !== VoteValue.UP) return;
 
-    try {
-      const report = await reportRepository.findById(args.resourceId);
-      const reportCreatorUserId = report?.userId ?? null;
-      if (!reportCreatorUserId) return;
+    const report = await tx.report.findFirst({
+      where: { id: args.resourceId, deletedAt: null },
+      select: { userId: true },
+    });
+    const reportCreatorUserId = report?.userId ?? null;
+    if (!reportCreatorUserId) return;
 
-      const countsMap = await voteRepository.aggregateVoteCountsByResource(
-        VoteResourceType.REPORT,
-        [args.resourceId],
-      );
-      const counts = countsMap.get(args.resourceId) ?? {
-        upvoteCount: 0,
-        downvoteCount: 0,
-      };
-      const upvoteCount = counts.upvoteCount;
-      if (upvoteCount <= 0) return;
+    const upvoteCount = await tx.vote.count({
+      where: {
+        resourceType: VoteResourceType.REPORT,
+        resourceId: args.resourceId,
+        value: VoteValue.UP,
+        deletedAt: null,
+      },
+    });
+    if (upvoteCount <= 0) return;
 
-      await rewardServiceClient.enqueueReportVoteMilestoneGreenPoints({
+    await emitOutbox(tx, {
+      aggregateType: "vote",
+      aggregateId: args.resourceId,
+      eventType: OutboxEventType.REPORT_VOTE_MILESTONE_GREEN_POINTS,
+      payload: {
         reportId: args.resourceId,
         reportCreatorUserId,
         voteCount: upvoteCount,
-      });
-    } catch (e) {
-      // Best-effort: do not block voting UX when reward enqueue fails.
-      if (process.env.NODE_ENV !== "production") {
-        console.warn("[incident-service] reward vote milestone enqueue failed", {
-          resourceId: args.resourceId,
-          message: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
+      },
+      dedupKey: `${OutboxEventType.REPORT_VOTE_MILESTONE_GREEN_POINTS}:${args.resourceId}:${upvoteCount}`,
+    });
   }
 
   private nextUpvoteValue(current: number | null): number {
@@ -143,18 +152,19 @@ export class VoteService {
     );
     const current = existing?.value ?? null;
     const value = this.nextUpvoteValue(current);
-    await voteRepository.upsertVote(
-      userId,
-      body.resourceType,
-      body.resourceId,
-      value,
-    );
-
-    // Fire-and-forget enqueue of green point evaluation for report creators.
-    void this.enqueueReportVoteMilestoneIfNeeded({
-      resourceType: body.resourceType,
-      resourceId: body.resourceId,
-      newValue: value,
+    await prisma.$transaction(async (tx) => {
+      await voteRepository.upsertVote(
+        userId,
+        body.resourceType,
+        body.resourceId,
+        value,
+        tx,
+      );
+      await this.emitReportVoteMilestoneIfNeeded(tx, {
+        resourceType: body.resourceType,
+        resourceId: body.resourceId,
+        newValue: value,
+      });
     });
 
     return {

@@ -107,8 +107,11 @@ export class ReportRepository {
     });
   }
 
-  async markReportAsDone(id: string): Promise<ReportEntity> {
-    return this.prisma.report.update({
+  async markReportAsDone(
+    id: string,
+    client: Prisma.TransactionClient = this.prisma,
+  ): Promise<ReportEntity> {
+    return client.report.update({
       where: { id },
       data: {
         status: ReportStatus._STATUS_COMPLETED,

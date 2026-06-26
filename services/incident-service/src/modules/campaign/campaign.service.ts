@@ -47,10 +47,8 @@ import {
 } from "./campaign_completion_verification/campaign_completion_verification.dto";
 import { campaignCompletionVerificationService } from "./campaign_completion_verification/campaign_completion_verification.service";
 import {
-  fetchIdentityUsersWithContactByIds,
   fetchOrganizationOwnersByUserIds,
   fetchUserIdsNearPoint,
-  getIdentityUserContact,
   getUserProfile,
 } from "../organization/identity-user.client";
 import type { OrganizationOwnerResponse } from "../organization/organization.dto";
@@ -58,6 +56,8 @@ import { toReportResponse } from "../report/report.entity";
 import type { ReportResponse } from "../report/report.dto";
 import { reportService } from "../report/report.service";
 import { reportRepository } from "../report/report.repository";
+import { emitOutbox } from "../../outbox/outbox.writer";
+import { OutboxEventType } from "../../outbox/outbox.types";
 
 /** Hardcoded radius for community verify invites (meters). */
 const NOTIFY_NEARBY_VERIFY_RADIUS_METERS = 5_000;
@@ -1420,6 +1420,37 @@ export class CampaignService {
       points: tier.greenPoints,
     }));
 
+    // TODO: re-enable Facebook recognition outbox event.
+    // /** Facebook / AI thanks: all approved members (check-in is not required for public recognition). */
+    // let recognizedVolunteers: { name: string; email: string | null }[] = [];
+    // if (approvedVolunteerIds.length > 0) {
+    //   const contacts =
+    //     await fetchIdentityUsersWithContactByIds(approvedVolunteerIds);
+    //   recognizedVolunteers = approvedVolunteerIds
+    //     .map((vid) => {
+    //       const u = getIdentityUserContact(contacts, vid);
+    //       if (!u?.name?.trim()) return null;
+    //       return {
+    //         name: u.name.trim(),
+    //         email: u.email && u.email.length > 0 ? u.email : null,
+    //       };
+    //     })
+    //     .filter((x): x is { name: string; email: string | null } => x !== null);
+    // }
+    //
+    // const facebookRecognitionPayload: Prisma.InputJsonValue = {
+    //   campaignId: id,
+    //   campaignTitle: existing.title,
+    //   recognizedUserIds: approvedVolunteerIds,
+    //   completedAt: new Date().toISOString(),
+    //   bannerUrl: existing.banner ?? null,
+    //   description: existing.description ?? null,
+    //   ...(recognizedVolunteers.length > 0 ? { recognizedVolunteers } : {}),
+    // };
+
+    // Complete campaign + emit reward events atomically. The outbox relay
+    // delivers them to reward-service, so completion is never half-applied and
+    // there is no post-commit enqueue/rollback dance.
     await prisma.$transaction(
       async (tx) => {
         await tx.campaign.update({
@@ -1447,75 +1478,29 @@ export class CampaignService {
             updatedBy: userId,
           },
         });
+
+        if (credits.length > 0) {
+          await emitOutbox(tx, {
+            aggregateType: "campaign",
+            aggregateId: id,
+            eventType: OutboxEventType.CAMPAIGN_COMPLETION_GREEN_POINTS,
+            payload: { campaignId: id, credits },
+            dedupKey: `${OutboxEventType.CAMPAIGN_COMPLETION_GREEN_POINTS}:${id}`,
+          });
+        }
+        // TODO: re-enable Facebook recognition outbox event.
+        // await emitOutbox(tx, {
+        //   aggregateType: "campaign",
+        //   aggregateId: id,
+        //   eventType: OutboxEventType.CAMPAIGN_FACEBOOK_RECOGNITION,
+        //   payload: facebookRecognitionPayload,
+        //   dedupKey: `${OutboxEventType.CAMPAIGN_FACEBOOK_RECOGNITION}:${id}`,
+        // });
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       },
     );
-
-    try {
-      if (credits.length > 0) {
-        await rewardServiceClient.enqueueCampaignCompletionGreenPoints({
-          campaignId: id,
-          credits,
-        });
-      }
-      /** Facebook / AI thanks: all approved members (check-in is not required for public recognition). */
-      let recognizedVolunteers: { name: string; email: string | null }[] = [];
-      if (approvedVolunteerIds.length > 0) {
-        const contacts =
-          await fetchIdentityUsersWithContactByIds(approvedVolunteerIds);
-        recognizedVolunteers = approvedVolunteerIds
-          .map((vid) => {
-            const u = getIdentityUserContact(contacts, vid);
-            if (!u?.name?.trim()) return null;
-            return {
-              name: u.name.trim(),
-              email: u.email && u.email.length > 0 ? u.email : null,
-            };
-          })
-          .filter(
-            (x): x is { name: string; email: string | null } => x !== null,
-          );
-      }
-
-      await rewardServiceClient.enqueueCampaignFacebookRecognition({
-        campaignId: id,
-        campaignTitle: existing.title,
-        recognizedUserIds: approvedVolunteerIds,
-        completedAt: new Date().toISOString(),
-        bannerUrl: existing.banner ?? null,
-        description: existing.description ?? null,
-        ...(recognizedVolunteers.length > 0 ? { recognizedVolunteers } : {}),
-      });
-    } catch (e) {
-      await prisma.$transaction(
-        async (tx) => {
-          await tx.campaign.update({
-            where: { id },
-            data: {
-              status: GlobalStatus._STATUS_WAITING_CONFIRMED,
-              updatedBy: userId,
-            },
-          });
-          await tx.report.updateMany({
-            where: {
-              campaignId: id,
-              deletedAt: null,
-              status: ReportStatus._STATUS_COMPLETED,
-            },
-            data: {
-              status: ReportStatus._STATUS_INPROCESS,
-              updatedBy: userId,
-            },
-          });
-        },
-        {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        },
-      );
-      throw e;
-    }
 
     void this.notifyApprovedVolunteersCampaignDone({
       volunteerIds: approvedVolunteerIds,
