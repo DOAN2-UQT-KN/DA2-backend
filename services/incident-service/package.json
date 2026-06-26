@@ -16,6 +16,7 @@
     "dev": "nodemon",
     "dev:worker": "ts-node -r tsconfig-paths/register src/worker.ts",
     "test": "jest",
+    "test:it": "jest --config jest.integration.config.js --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
@@ -36,9 +37,9 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.879.0",
-    "@da2/queue": "file:../../shared/da2-queue",
     "@da2/constants": "file:../../shared/da2-constants",
     "@da2/express-swagger": "file:../../shared/express-swagger",
+    "@da2/queue": "file:../../shared/da2-queue",
     "@prisma/client": "^6.19.2",
     "axios": "^1.6.0",
     "cookie-parser": "^1.4.6",
@@ -52,9 +53,11 @@
     "ts-json-schema-generator": "^2.4.0"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "^12.0.3",
     "@types/cookie-parser": "^1.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.25",
+    "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.19.37",
     "@types/swagger-ui-express": "^4.1.8",
@@ -62,8 +65,10 @@
     "@typescript-eslint/eslint-plugin": "^6.17.0",
     "@typescript-eslint/parser": "^6.17.0",
     "eslint": "^8.56.0",
+    "jest": "^29.7.0",
     "nodemon": "^3.1.11",
     "prisma": "^6.19.2",
+    "ts-jest": "^29.4.11",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.3.3"

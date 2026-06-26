@@ -40,6 +40,17 @@ jobs:
       - name: Install dependencies
         run: cd services/incident-service && npm ci
 
+      - name: Generate Prisma client
+        run: cd services/incident-service && npm run prisma:generate
+
+      - name: Unit tests
+        run: cd services/incident-service && npm test
+
+      - name: Integration tests (Testcontainers + Postgres/PostGIS)
+        # ubuntu-latest ships a running Docker daemon, so Testcontainers can
+        # spin up a throwaway Postgres for the outbox end-to-end tests.
+        run: cd services/incident-service && npm run test:it
+
       - name: Build app
         run: cd services/incident-service && npm run build
 
