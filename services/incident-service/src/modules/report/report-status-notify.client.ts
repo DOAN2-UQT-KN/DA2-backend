@@ -1,9 +1,17 @@
 import axios from "axios";
 import { filterUserIdsForNotificationKind } from "../organization/identity-user.client";
+import {
+  getHttpCircuit,
+  HTTP_CIRCUIT_NOTIFICATION,
+} from "../../resilience/http-circuit";
 
 interface SuccessEnvelope<T> {
   success: boolean;
   data?: T;
+}
+
+function notificationCircuit() {
+  return getHttpCircuit(HTTP_CIRCUIT_NOTIFICATION);
 }
 
 /**
@@ -34,28 +42,29 @@ export async function enqueueReportStatusWebsiteNotification(params: {
     return;
   }
 
-  const client = axios.create({
-    baseURL: baseURL.replace(/\/$/, ""),
-    timeout: 10_000,
-    headers: { "x-internal-api-key": key },
-  });
+  await notificationCircuit().run(async () => {
+    const client = axios.create({
+      baseURL: baseURL.replace(/\/$/, ""),
+      timeout: 10_000,
+      headers: { "x-internal-api-key": key },
+    });
 
-  const { data } = await client.post<SuccessEnvelope<{ accepted: boolean }>>(
-    "/api/v1/notifications/jobs",
-    {
-      type: "website",
-      kind: "REPORT_STATUS",
-      userId: params.userId,
-      payload: {
-        reportId: params.reportId,
-        reportTitle: params.reportTitle,
-        status: params.status,
+    const { data } = await client.post<SuccessEnvelope<{ accepted: boolean }>>(
+      "/api/v1/notifications/jobs",
+      {
+        type: "website",
+        kind: "REPORT_STATUS",
+        userId: params.userId,
+        payload: {
+          reportId: params.reportId,
+          reportTitle: params.reportTitle,
+          status: params.status,
+        },
       },
-    },
-  );
+    );
 
-  if (!data?.success) {
-    throw new Error("Notification service rejected report status job");
-  }
+    if (!data?.success) {
+      throw new Error("Notification service rejected report status job");
+    }
+  });
 }
-

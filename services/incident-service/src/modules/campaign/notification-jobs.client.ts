@@ -1,9 +1,17 @@
 import axios from "axios";
 import { filterUserIdsForNotificationKind } from "../organization/identity-user.client";
+import {
+  getHttpCircuit,
+  HTTP_CIRCUIT_NOTIFICATION,
+} from "../../resilience/http-circuit";
 
 interface SuccessEnvelope<T> {
   success: boolean;
   data?: T;
+}
+
+function notificationCircuit() {
+  return getHttpCircuit(HTTP_CIRCUIT_NOTIFICATION);
 }
 
 async function postWebsiteNotificationJob(params: {
@@ -20,25 +28,27 @@ async function postWebsiteNotificationJob(params: {
     return;
   }
 
-  const client = axios.create({
-    baseURL: baseURL.replace(/\/$/, ""),
-    timeout: 10_000,
-    headers: { "x-internal-api-key": key },
+  await notificationCircuit().run(async () => {
+    const client = axios.create({
+      baseURL: baseURL.replace(/\/$/, ""),
+      timeout: 10_000,
+      headers: { "x-internal-api-key": key },
+    });
+
+    const { data } = await client.post<SuccessEnvelope<{ accepted: boolean }>>(
+      "/api/v1/notifications/jobs",
+      {
+        type: "website",
+        kind: params.kind,
+        userId: params.userId,
+        payload: params.payload,
+      },
+    );
+
+    if (!data?.success) {
+      throw new Error(`Notification service rejected job (kind=${params.kind})`);
+    }
   });
-
-  const { data } = await client.post<SuccessEnvelope<{ accepted: boolean }>>(
-    "/api/v1/notifications/jobs",
-    {
-      type: "website",
-      kind: params.kind,
-      userId: params.userId,
-      payload: params.payload,
-    },
-  );
-
-  if (!data?.success) {
-    throw new Error(`Notification service rejected job (kind=${params.kind})`);
-  }
 }
 
 /** Enqueue the same in-app notification to many users (respects notification prefs). */

@@ -5,11 +5,13 @@ import {
   HTTP_CIRCUIT_IDENTITY,
 } from "../../resilience/http-circuit";
 
-const identityCircuit = getHttpCircuit(HTTP_CIRCUIT_IDENTITY);
+function identityCircuit() {
+  return getHttpCircuit(HTTP_CIRCUIT_IDENTITY);
+}
 
 /** Current circuit state for identity HTTP calls (health / tests). */
 export function getIdentityHttpCircuitState(): string {
-  return identityCircuit.getState();
+  return identityCircuit().getState();
 }
 
 function getClient(): AxiosInstance {
@@ -203,7 +205,7 @@ export async function fetchIdentityUsersWithContactByIds(
   }
 
   try {
-    await identityCircuit.run(async () => {
+    await identityCircuit().run(async () => {
       const client = getClient();
       for (let i = 0; i < unique.length; i += INTERNAL_USERS_BY_IDS_MAX) {
         const chunk = unique.slice(i, i + INTERNAL_USERS_BY_IDS_MAX);
@@ -276,7 +278,7 @@ export async function fetchOrganizationOwnersByUserIds(
   }
 
   try {
-    await identityCircuit.run(async () => {
+    await identityCircuit().run(async () => {
       const client = getClient();
       for (let i = 0; i < unique.length; i += INTERNAL_USERS_BY_IDS_MAX) {
         const chunk = unique.slice(i, i + INTERNAL_USERS_BY_IDS_MAX);
@@ -324,7 +326,7 @@ export async function fetchUsersWithDistanceFromPoint(params: {
   }
 
   try {
-    return await identityCircuit.run(async () => {
+    return await identityCircuit().run(async () => {
       const client = axios.create({
         baseURL: baseURL.replace(/\/$/, ""),
         timeout: 10_000,
@@ -399,7 +401,7 @@ export async function fetchUserIdsNearPoint(params: {
   );
 
   try {
-    return await identityCircuit.run(async () => {
+    return await identityCircuit().run(async () => {
       const client = axios.create({
         baseURL: baseURL.replace(/\/$/, ""),
         timeout: 10_000,
@@ -448,7 +450,7 @@ export async function filterUserIdsForNotificationKind(params: {
   }
 
   try {
-    return await identityCircuit.run(async () => {
+    return await identityCircuit().run(async () => {
       const client = axios.create({
         baseURL: baseURL.replace(/\/$/, ""),
         timeout: 10_000,

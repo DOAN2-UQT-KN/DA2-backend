@@ -1,8 +1,16 @@
 import axios from "axios";
+import {
+  getHttpCircuit,
+  HTTP_CIRCUIT_NOTIFICATION,
+} from "../../resilience/http-circuit";
 
 interface SuccessEnvelope<T> {
   success: boolean;
   data?: T;
+}
+
+function notificationCircuit() {
+  return getHttpCircuit(HTTP_CIRCUIT_NOTIFICATION);
 }
 
 /**
@@ -26,29 +34,33 @@ export async function enqueueOrganizationContactVerificationEmail(params: {
 
   const appName = process.env.APP_NAME?.trim() || "DA2";
 
-  const client = axios.create({
-    baseURL: baseURL.replace(/\/$/, ""),
-    timeout: 10_000,
-    headers: { "x-internal-api-key": key },
-  });
+  await notificationCircuit().run(async () => {
+    const client = axios.create({
+      baseURL: baseURL.replace(/\/$/, ""),
+      timeout: 10_000,
+      headers: { "x-internal-api-key": key },
+    });
 
-  const { data } = await client.post<SuccessEnvelope<{ jobId: string }>>(
-    "/api/v1/notifications/jobs",
-    {
-      type: "email",
-      kind: "ORGANIZATION_CONTACT_VERIFY",
-      payload: {
-        toEmail: params.toEmail,
-        organizationName: params.organizationName,
-        verifyUrl: params.verifyUrl,
-        appName,
-        organizationId: params.organizationId,
-        ownerUserId: params.ownerUserId,
+    const { data } = await client.post<SuccessEnvelope<{ jobId: string }>>(
+      "/api/v1/notifications/jobs",
+      {
+        type: "email",
+        kind: "ORGANIZATION_CONTACT_VERIFY",
+        payload: {
+          toEmail: params.toEmail,
+          organizationName: params.organizationName,
+          verifyUrl: params.verifyUrl,
+          appName,
+          organizationId: params.organizationId,
+          ownerUserId: params.ownerUserId,
+        },
       },
-    },
-  );
+    );
 
-  if (!data?.success) {
-    throw new Error("Notification service rejected organization contact email job");
-  }
+    if (!data?.success) {
+      throw new Error(
+        "Notification service rejected organization contact email job",
+      );
+    }
+  });
 }

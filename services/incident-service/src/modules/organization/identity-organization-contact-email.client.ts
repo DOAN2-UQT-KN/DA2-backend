@@ -1,4 +1,12 @@
 import axios, { AxiosInstance } from "axios";
+import {
+  getHttpCircuit,
+  HTTP_CIRCUIT_IDENTITY,
+} from "../../resilience/http-circuit";
+
+function identityCircuit() {
+  return getHttpCircuit(HTTP_CIRCUIT_IDENTITY);
+}
 
 function getClient(): AxiosInstance {
   const baseURL = process.env.IDENTITY_SERVICE_URL?.trim();
@@ -33,34 +41,43 @@ export async function issueOrganizationContactEmailToken(params: {
   contactEmail: string;
   ownerUserId: string;
 }): Promise<string> {
-  const client = getClient();
-  const { data } = await client.post<SuccessEnvelope<IssueTokenResponseData>>(
-    "/internal/v1/organization-contact-email/tokens",
-    {
-      organizationId: params.organizationId,
-      contactEmail: params.contactEmail,
-      ownerUserId: params.ownerUserId,
-    },
-  );
-  const token = data?.data?.token?.trim();
-  if (!data?.success || !token) {
-    throw new Error("Identity service did not return a contact verification token");
-  }
-  return token;
+  return identityCircuit().run(async () => {
+    const client = getClient();
+    const { data } = await client.post<SuccessEnvelope<IssueTokenResponseData>>(
+      "/internal/v1/organization-contact-email/tokens",
+      {
+        organizationId: params.organizationId,
+        contactEmail: params.contactEmail,
+        ownerUserId: params.ownerUserId,
+      },
+    );
+    const token = data?.data?.token?.trim();
+    if (!data?.success || !token) {
+      throw new Error(
+        "Identity service did not return a contact verification token",
+      );
+    }
+    return token;
+  });
 }
 
 export async function verifyAndConsumeOrganizationContactEmailToken(
   plainToken: string,
 ): Promise<{ organizationId: string; contactEmail: string }> {
-  const client = getClient();
-  const { data } = await client.post<SuccessEnvelope<VerifyTokenResponseData>>(
-    "/internal/v1/organization-contact-email/tokens/verify",
-    { token: plainToken },
-  );
-  const orgId = data?.data?.organization_id?.trim();
-  const email = data?.data?.contact_email?.trim().toLowerCase();
-  if (!data?.success || !orgId || !email) {
-    throw new Error("Invalid or expired organization contact verification token");
-  }
-  return { organizationId: orgId, contactEmail: email };
+  return identityCircuit().run(async () => {
+    const client = getClient();
+    const { data } = await client.post<
+      SuccessEnvelope<VerifyTokenResponseData>
+    >("/internal/v1/organization-contact-email/tokens/verify", {
+      token: plainToken,
+    });
+    const orgId = data?.data?.organization_id?.trim();
+    const email = data?.data?.contact_email?.trim().toLowerCase();
+    if (!data?.success || !orgId || !email) {
+      throw new Error(
+        "Invalid or expired organization contact verification token",
+      );
+    }
+    return { organizationId: orgId, contactEmail: email };
+  });
 }
