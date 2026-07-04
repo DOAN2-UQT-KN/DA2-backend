@@ -8,6 +8,7 @@ import {
 import { authService } from "./auth.service";
 import { GoogleOauthCallbackQuery } from "./auth.dto";
 import { googleOauthService } from "../oauth/google.service";
+import logger from "../../logger";
 
 export class AuthController {
   constructor() { }
@@ -82,10 +83,13 @@ export class AuthController {
         );
       }
 
+      logger.info({ email: req.body?.email }, "signup attempt");
       try {
         const result = await authService.signup(req.body);
+        logger.info({ email: req.body?.email }, "signup success");
         sendSuccess(res, HTTP_STATUS.CREATED, result);
       } catch (error) {
+        logger.error({ email: req.body?.email, err: error }, "signup failed");
         console.error("Signup error:", error);
         if (
           error instanceof Error &&
@@ -114,12 +118,15 @@ export class AuthController {
         );
       }
 
+      logger.info({ email: req.body?.email }, "login attempt");
       try {
         const result = await authService.login(req.body);
         if (!result) {
+          logger.warn({ email: req.body?.email }, "login invalid credentials");
           return sendError(res, HTTP_STATUS.INVALID_CREDENTIALS);
         }
-        
+
+        logger.info({ email: req.body?.email }, "login success");
         const isProduction = process.env.NODE_ENV === "production";
 
         // Set access token cookie (httpOnly)
@@ -132,6 +139,7 @@ export class AuthController {
 
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {
+        logger.error({ email: req.body?.email, err: error }, "login failed");
         console.error("Login error:", error);
         sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
       }

@@ -1,7 +1,10 @@
-import axios, { AxiosInstance } from "axios";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { GlobalStatus } from "../constants/status.enum";
-import { OutboxEventType } from "./outbox.types";
+import {
+  type OutboxPublisher,
+  SqsOutboxPublisher,
+} from "./outbox-publisher";
+import { CircuitBreaker } from "../resilience/circuit-breaker";
 
 interface ClaimedRow {
   id: string;
@@ -22,15 +25,23 @@ const ERROR_BACKOFF_MS = 2_000;
 
 /**
  * Outbox relay: claims PENDING outbox rows (FOR UPDATE SKIP LOCKED so multiple
- * replicas don't double-process), delivers them to reward-service, and marks
- * them COMPLETED. Delivery is at-least-once; the reward ledger is idempotent.
+ * replicas don't double-process), publishes them onto the reward intake SQS
+ * queue, and marks them COMPLETED. Delivery is at-least-once; the reward ledger
+ * is idempotent.
  */
 export class OutboxRelay {
   private isRunning = false;
   private isShuttingDown = false;
   private readonly config: RelayConfig;
+  private publisher: OutboxPublisher | null;
+  private readonly breaker: CircuitBreaker;
 
-  constructor(private readonly prisma: PrismaClient) {
+  constructor(
+    private readonly prisma: PrismaClient,
+    publisher?: OutboxPublisher,
+    breaker?: CircuitBreaker,
+  ) {
+    this.publisher = publisher ?? null;
     this.config = {
       batchSize: Number(process.env.OUTBOX_RELAY_BATCH_SIZE ?? 20),
       pollIntervalMs: Number(process.env.OUTBOX_RELAY_POLL_INTERVAL_MS ?? 2000),
@@ -39,21 +50,38 @@ export class OutboxRelay {
         process.env.OUTBOX_RELAY_MAX_RETRY_DELAY_MS ?? 900_000,
       ),
     };
+    // Guards the downstream publish path: if the reward intake (SQS) keeps
+    // failing, the breaker opens so the relay stops claiming rows. Events stay
+    // PENDING and are retried after the cooldown instead of every event burning
+    // its own attempts against a dependency that is globally down.
+    this.breaker =
+      breaker ??
+      new CircuitBreaker(
+        {
+          failureThreshold: Number(
+            process.env.OUTBOX_BREAKER_FAILURE_THRESHOLD ?? 5,
+          ),
+          openDurationMs: Number(process.env.OUTBOX_BREAKER_OPEN_MS ?? 30_000),
+          successThreshold: Number(
+            process.env.OUTBOX_BREAKER_SUCCESS_THRESHOLD ?? 2,
+          ),
+        },
+        undefined,
+        "outbox->reward",
+      );
   }
 
-  private getRewardClient(): AxiosInstance {
-    const baseURL = process.env.REWARD_SERVICE_URL?.trim();
-    const key = process.env.INTERNAL_REWARD_API_KEY?.trim();
-    if (!baseURL || !key) {
-      throw new Error(
-        "REWARD_SERVICE_URL and INTERNAL_REWARD_API_KEY must be configured for the outbox relay",
-      );
+  /** Lazily build the SQS publisher so tests can run without queue env. */
+  private getPublisher(): OutboxPublisher {
+    if (!this.publisher) {
+      this.publisher = new SqsOutboxPublisher();
     }
-    return axios.create({
-      baseURL: baseURL.replace(/\/$/, ""),
-      timeout: 10_000,
-      headers: { "x-internal-api-key": key },
-    });
+    return this.publisher;
+  }
+
+  /** Current downstream circuit state — useful for health/metrics endpoints. */
+  getCircuitState(): string {
+    return this.breaker.getState();
   }
 
   start(): void {
@@ -75,14 +103,28 @@ export class OutboxRelay {
     this.isRunning = true;
     try {
       while (!this.isShuttingDown) {
-        const claimed = await this.claimBatch();
+        // Circuit OPEN: skip claiming entirely so rows stay PENDING (no rows
+        // stranded in INPROCESS) until the cooldown lets a trial through.
+        if (!this.breaker.canRequest()) {
+          await sleep(this.config.pollIntervalMs);
+          continue;
+        }
+        // In HALF_OPEN only a single trial event is claimed to probe recovery.
+        const limit =
+          this.breaker.getState() === "HALF_OPEN" ? 1 : this.config.batchSize;
+        const claimed = await this.claimBatch(limit);
         if (claimed.length === 0) {
           await sleep(this.config.pollIntervalMs);
           continue;
         }
-        for (const row of claimed) {
-          if (this.isShuttingDown) break;
-          await this.deliver(row);
+        for (let i = 0; i < claimed.length; i += 1) {
+          // The breaker may trip mid-batch; release the not-yet-delivered rows
+          // back to PENDING so they are re-claimed on a later (healthy) cycle.
+          if (this.isShuttingDown || !this.breaker.canRequest()) {
+            await this.releaseToPending(claimed.slice(i).map((r) => r.id));
+            break;
+          }
+          await this.deliver(claimed[i]);
         }
       }
     } catch (err) {
@@ -97,14 +139,16 @@ export class OutboxRelay {
   }
 
   /** Atomically lock + mark a batch as in-process so replicas don't collide. */
-  private async claimBatch(): Promise<ClaimedRow[]> {
+  private async claimBatch(
+    limit: number = this.config.batchSize,
+  ): Promise<ClaimedRow[]> {
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<ClaimedRow[]>(Prisma.sql`
         SELECT id, event_type, payload, attempts, max_attempts
         FROM outbox_events
         WHERE status = ${GlobalStatus._STATUS_PENDING} AND run_after <= now()
         ORDER BY created_at
-        LIMIT ${this.config.batchSize}
+        LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
       `);
       if (rows.length === 0) return [];
@@ -116,20 +160,24 @@ export class OutboxRelay {
     });
   }
 
+  /** Return claimed-but-undelivered rows to PENDING (e.g. circuit tripped). */
+  private async releaseToPending(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.prisma.outboxEvent.updateMany({
+      where: { id: { in: ids } },
+      data: { status: GlobalStatus._STATUS_PENDING },
+    });
+  }
+
   private async deliver(row: ClaimedRow): Promise<void> {
     try {
-      const client = this.getRewardClient();
-      if (row.event_type === OutboxEventType.CAMPAIGN_FACEBOOK_RECOGNITION) {
-        await client.post("/internal/v1/facebook-recognition/enqueue", {
-          payload: row.payload,
-        });
-      } else {
-        // All *_GREEN_POINTS event types map to the reward green-points endpoint.
-        await client.post("/internal/v1/green-points/enqueue", {
-          type: row.event_type,
-          payload: row.payload,
-        });
-      }
+      // The reward intake worker routes by `event_type` (jobType), so the relay
+      // just hands the event to the shared queue regardless of its kind.
+      await this.getPublisher().publish({
+        id: row.id,
+        eventType: row.event_type,
+        payload: row.payload,
+      });
       await this.prisma.outboxEvent.update({
         where: { id: row.id },
         data: {
@@ -138,8 +186,10 @@ export class OutboxRelay {
           lastError: null,
         },
       });
+      this.breaker.onSuccess();
     } catch (err) {
       await this.handleFailure(row, err);
+      this.breaker.onFailure();
     }
   }
 

@@ -1,3 +1,4 @@
+import "./tracer";
 import "dotenv/config";
 import { prisma } from "./lib/prisma";
 import { startAllQueues } from "./queue/register";

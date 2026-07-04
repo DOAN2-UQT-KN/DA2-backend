@@ -10,5 +10,31 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./localstack/init/ready.d:/etc/localstack/init/ready.d
 
+  # Local-only Datadog Agent. Services run on the host (npm run dev) and send
+  # traces/metrics to localhost:8126 / :8125 which are mapped from this container.
+  # Start with: DD_API_KEY=<key> docker compose up -d datadog-agent
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: datadog-agent
+    pid: host
+    environment:
+      DD_API_KEY: "${DD_API_KEY}"
+      DD_SITE: "${DD_SITE:-datadoghq.com}"
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      # Don't auto-run integration checks against unrelated containers from other
+      # projects (e.g. a stray RabbitMQ) so the logs stay quiet locally.
+      DD_AC_EXCLUDE: "name:.*rabbitmq.*"
+    ports:
+      - "8126:8126"
+      - "8125:8125/udp"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+
 volumes:
   localstack_data:

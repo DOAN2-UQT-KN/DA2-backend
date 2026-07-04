@@ -2,10 +2,13 @@ import { BackgroundJobDispatcher } from "@da2/queue";
 import { FACEBOOK_RECOGNITION_JOB_TYPE } from "../modules/facebook-recognition/facebook-recognition.types";
 import { KNOWN_GREEN_POINT_JOB_TYPES } from "../modules/green-point/green-point.types";
 import { TRANSLATE_TEXT_JOB_TYPE } from "../modules/translation/translation.types";
+import { NoopBackgroundJobStore } from "./noop-background-job-store";
 import { RewardBackgroundJobStore } from "./reward-background-job-store";
 import { RewardSqsQueueFactory } from "./reward-sqs-queue-factory";
 
 const backgroundJobStore = new RewardBackgroundJobStore();
+/** Intake messages are owned (durably) by the producer's outbox; no local job row. */
+const intakeJobStore = new NoopBackgroundJobStore();
 const sqsFactory = new RewardSqsQueueFactory({});
 
 const greenPointQueue = sqsFactory.createQueue(
@@ -19,6 +22,11 @@ const facebookRecognitionQueue = sqsFactory.createQueue(
 const translationQueue = sqsFactory.createQueue(
   "SQS_REWARD_TRANSLATION_QUEUE_URL",
   backgroundJobStore,
+);
+/** Cross-service intake: incident-service publishes outbox events here. */
+const rewardIntakeQueue = sqsFactory.createQueue(
+  "SQS_REWARD_INTAKE_QUEUE_URL",
+  intakeJobStore,
 );
 
 export const backgroundJobDispatcher = new BackgroundJobDispatcher();
@@ -35,5 +43,7 @@ export {
   backgroundJobStore,
   facebookRecognitionQueue,
   greenPointQueue,
+  intakeJobStore,
+  rewardIntakeQueue,
   translationQueue,
 };

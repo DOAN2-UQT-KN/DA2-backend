@@ -1,5 +1,16 @@
 import axios, { AxiosInstance } from "axios";
 import type { OrganizationOwnerResponse } from "./organization.dto";
+import {
+  getHttpCircuit,
+  HTTP_CIRCUIT_IDENTITY,
+} from "../../resilience/http-circuit";
+
+const identityCircuit = getHttpCircuit(HTTP_CIRCUIT_IDENTITY);
+
+/** Current circuit state for identity HTTP calls (health / tests). */
+export function getIdentityHttpCircuitState(): string {
+  return identityCircuit.getState();
+}
 
 function getClient(): AxiosInstance {
   const baseURL = process.env.IDENTITY_SERVICE_URL?.trim();
@@ -192,25 +203,27 @@ export async function fetchIdentityUsersWithContactByIds(
   }
 
   try {
-    const client = getClient();
-    for (let i = 0; i < unique.length; i += INTERNAL_USERS_BY_IDS_MAX) {
-      const chunk = unique.slice(i, i + INTERNAL_USERS_BY_IDS_MAX);
-      const { data } = await client.post<SuccessEnvelope<{ users?: unknown }>>(
-        "/internal/v1/users/by-ids",
-        { ids: chunk },
-      );
-      const users = getUsersArrayFromResponse(data);
-      if (users === null) {
-        throw new Error("Identity service did not return users");
-      }
-      for (const raw of users) {
-        const row = readIdentityContactFromRow(raw);
-        if (!row) {
-          continue;
+    await identityCircuit.run(async () => {
+      const client = getClient();
+      for (let i = 0; i < unique.length; i += INTERNAL_USERS_BY_IDS_MAX) {
+        const chunk = unique.slice(i, i + INTERNAL_USERS_BY_IDS_MAX);
+        const { data } = await client.post<SuccessEnvelope<{ users?: unknown }>>(
+          "/internal/v1/users/by-ids",
+          { ids: chunk },
+        );
+        const users = getUsersArrayFromResponse(data);
+        if (users === null) {
+          throw new Error("Identity service did not return users");
         }
-        out.set(mapKeyForUserId(row.id), row);
+        for (const raw of users) {
+          const row = readIdentityContactFromRow(raw);
+          if (!row) {
+            continue;
+          }
+          out.set(mapKeyForUserId(row.id), row);
+        }
       }
-    }
+    });
   } catch (e) {
     console.error(
       "[identity-user.client] fetchIdentityUsersWithContactByIds:",
@@ -263,25 +276,27 @@ export async function fetchOrganizationOwnersByUserIds(
   }
 
   try {
-    const client = getClient();
-    for (let i = 0; i < unique.length; i += INTERNAL_USERS_BY_IDS_MAX) {
-      const chunk = unique.slice(i, i + INTERNAL_USERS_BY_IDS_MAX);
-      const { data } = await client.post<SuccessEnvelope<{ users?: unknown }>>(
-        "/internal/v1/users/by-ids",
-        { ids: chunk },
-      );
-      const users = getUsersArrayFromResponse(data);
-      if (users === null) {
-        throw new Error("Identity service did not return users");
-      }
-      for (const raw of users) {
-        const profile = readProfileFromRow(raw);
-        if (!profile) {
-          continue;
+    await identityCircuit.run(async () => {
+      const client = getClient();
+      for (let i = 0; i < unique.length; i += INTERNAL_USERS_BY_IDS_MAX) {
+        const chunk = unique.slice(i, i + INTERNAL_USERS_BY_IDS_MAX);
+        const { data } = await client.post<SuccessEnvelope<{ users?: unknown }>>(
+          "/internal/v1/users/by-ids",
+          { ids: chunk },
+        );
+        const users = getUsersArrayFromResponse(data);
+        if (users === null) {
+          throw new Error("Identity service did not return users");
         }
-        out.set(mapKeyForUserId(profile.id), profile);
+        for (const raw of users) {
+          const profile = readProfileFromRow(raw);
+          if (!profile) {
+            continue;
+          }
+          out.set(mapKeyForUserId(profile.id), profile);
+        }
       }
-    }
+    });
   } catch (e) {
     console.error("[identity-user.client] fetchOrganizationOwnersByUserIds:", e);
   }
@@ -308,51 +323,53 @@ export async function fetchUsersWithDistanceFromPoint(params: {
     return [];
   }
 
-  const client = axios.create({
-    baseURL: baseURL.replace(/\/$/, ""),
-    timeout: 10_000,
-    headers: { "x-internal-api-key": key },
-  });
-
   try {
-    const { data } = await client.post<
-      SuccessEnvelope<{ users?: unknown }>
-    >("/internal/v1/users/distance-from-point", {
-      latitude: params.latitude,
-      longitude: params.longitude,
-    });
-
-    const inner = data?.data;
-    const raw =
-      inner && typeof inner === "object"
-        ? (inner as { users?: unknown }).users
-        : undefined;
-    if (!Array.isArray(raw)) {
-      return [];
-    }
-
-    const out: UserDistanceFromPointRow[] = [];
-    for (const row of raw) {
-      if (!row || typeof row !== "object") {
-        continue;
-      }
-      const r = row as Record<string, unknown>;
-      const id = typeof r.id === "string" ? r.id : "";
-      if (!id) {
-        continue;
-      }
-      out.push({
-        id,
-        email: typeof r.email === "string" ? r.email : "",
-        name: typeof r.name === "string" ? r.name : "",
-        latitude: pickFiniteNumber(r.latitude),
-        longitude: pickFiniteNumber(r.longitude),
-        distanceMeters: pickFiniteNumber(
-          r.distanceMeters ?? r.distance_meters,
-        ),
+    return await identityCircuit.run(async () => {
+      const client = axios.create({
+        baseURL: baseURL.replace(/\/$/, ""),
+        timeout: 10_000,
+        headers: { "x-internal-api-key": key },
       });
-    }
-    return out;
+
+      const { data } = await client.post<
+        SuccessEnvelope<{ users?: unknown }>
+      >("/internal/v1/users/distance-from-point", {
+        latitude: params.latitude,
+        longitude: params.longitude,
+      });
+
+      const inner = data?.data;
+      const raw =
+        inner && typeof inner === "object"
+          ? (inner as { users?: unknown }).users
+          : undefined;
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+
+      const out: UserDistanceFromPointRow[] = [];
+      for (const row of raw) {
+        if (!row || typeof row !== "object") {
+          continue;
+        }
+        const r = row as Record<string, unknown>;
+        const id = typeof r.id === "string" ? r.id : "";
+        if (!id) {
+          continue;
+        }
+        out.push({
+          id,
+          email: typeof r.email === "string" ? r.email : "",
+          name: typeof r.name === "string" ? r.name : "",
+          latitude: pickFiniteNumber(r.latitude),
+          longitude: pickFiniteNumber(r.longitude),
+          distanceMeters: pickFiniteNumber(
+            r.distanceMeters ?? r.distance_meters,
+          ),
+        });
+      }
+      return out;
+    });
   } catch (e) {
     console.error("[identity-user.client] fetchUsersWithDistanceFromPoint:", e);
     return [];
@@ -377,27 +394,29 @@ export async function fetchUserIdsNearPoint(params: {
     return [];
   }
 
-  const client = axios.create({
-    baseURL: baseURL.replace(/\/$/, ""),
-    timeout: 10_000,
-    headers: { "x-internal-api-key": key },
-  });
-
   const excludeUserIds = filterUserIdsForIdentityInternalApi(
     params.excludeUserIds ?? [],
   );
 
   try {
-    const { data } = await client.post<
-      SuccessEnvelope<{ userIds?: unknown }>
-    >("/internal/v1/users/nearby-ids", {
-      latitude: params.latitude,
-      longitude: params.longitude,
-      radiusMeters: params.radiusMeters,
-      excludeUserIds,
-    });
+    return await identityCircuit.run(async () => {
+      const client = axios.create({
+        baseURL: baseURL.replace(/\/$/, ""),
+        timeout: 10_000,
+        headers: { "x-internal-api-key": key },
+      });
 
-    return pickUserIdsFromEnvelope(data?.data);
+      const { data } = await client.post<
+        SuccessEnvelope<{ userIds?: unknown }>
+      >("/internal/v1/users/nearby-ids", {
+        latitude: params.latitude,
+        longitude: params.longitude,
+        radiusMeters: params.radiusMeters,
+        excludeUserIds,
+      });
+
+      return pickUserIdsFromEnvelope(data?.data);
+    });
   } catch (e) {
     console.error("[identity-user.client] fetchUserIdsNearPoint:", e);
     return [];
@@ -428,27 +447,29 @@ export async function filterUserIdsForNotificationKind(params: {
     return unique;
   }
 
-  const client = axios.create({
-    baseURL: baseURL.replace(/\/$/, ""),
-    timeout: 10_000,
-    headers: { "x-internal-api-key": key },
-  });
-
-  const enabled: string[] = [];
   try {
-    for (let i = 0; i < unique.length; i += INTERNAL_NOTIFICATION_FILTER_MAX) {
-      const chunk = unique.slice(i, i + INTERNAL_NOTIFICATION_FILTER_MAX);
-      const { data } = await client.post<
-        SuccessEnvelope<{ userIds?: unknown }>
-      >("/internal/v1/users/notification-prefs/filter", {
-        userIds: chunk,
-        kind: params.kind,
+    return await identityCircuit.run(async () => {
+      const client = axios.create({
+        baseURL: baseURL.replace(/\/$/, ""),
+        timeout: 10_000,
+        headers: { "x-internal-api-key": key },
       });
-      for (const id of pickUserIdsFromEnvelope(data?.data)) {
-        enabled.push(id);
+
+      const enabled: string[] = [];
+      for (let i = 0; i < unique.length; i += INTERNAL_NOTIFICATION_FILTER_MAX) {
+        const chunk = unique.slice(i, i + INTERNAL_NOTIFICATION_FILTER_MAX);
+        const { data } = await client.post<
+          SuccessEnvelope<{ userIds?: unknown }>
+        >("/internal/v1/users/notification-prefs/filter", {
+          userIds: chunk,
+          kind: params.kind,
+        });
+        for (const id of pickUserIdsFromEnvelope(data?.data)) {
+          enabled.push(id);
+        }
       }
-    }
-    return enabled;
+      return enabled;
+    });
   } catch (e) {
     console.error(
       "[identity-user.client] filterUserIdsForNotificationKind:",

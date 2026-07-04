@@ -1,3 +1,4 @@
+import "./tracer";
 import express from "express";
 import proxy from "express-http-proxy";
 import helmet from "helmet";

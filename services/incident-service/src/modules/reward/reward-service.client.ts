@@ -1,4 +1,9 @@
 import axios, { AxiosInstance } from "axios";
+import {
+  getHttpCircuit,
+  HTTP_CIRCUIT_REWARD,
+  type HttpCircuit,
+} from "../../resilience/http-circuit";
 
 export interface RewardDifficulty {
   id: string;
@@ -74,6 +79,16 @@ function readDifficultiesFromResponse(data: unknown): RewardDifficulty[] {
 }
 
 export class RewardServiceClient {
+  private readonly circuit: HttpCircuit;
+
+  constructor(circuit?: HttpCircuit) {
+    this.circuit = circuit ?? getHttpCircuit(HTTP_CIRCUIT_REWARD);
+  }
+
+  getCircuitState(): string {
+    return this.circuit.getState();
+  }
+
   private getClient(): AxiosInstance {
     const baseURL = process.env.REWARD_SERVICE_URL;
     const key = process.env.INTERNAL_REWARD_API_KEY;
@@ -119,11 +134,13 @@ export class RewardServiceClient {
 
   async getDifficulties(): Promise<RewardDifficulty[]> {
     try {
-      const client = this.getClient();
-      const { data } = await client.get<
-        SuccessEnvelope<{ difficulties: RewardDifficulty[] }>
-      >("/internal/v1/difficulties");
-      return readDifficultiesFromResponse(data);
+      return await this.circuit.run(async () => {
+        const client = this.getClient();
+        const { data } = await client.get<
+          SuccessEnvelope<{ difficulties: RewardDifficulty[] }>
+        >("/internal/v1/difficulties");
+        return readDifficultiesFromResponse(data);
+      });
     } catch (e) {
       this.logCallFailure("getDifficulties", e);
       return [];
@@ -134,170 +151,19 @@ export class RewardServiceClient {
     level: number,
   ): Promise<RewardDifficulty | null> {
     try {
-      const client = this.getClient();
-      const { data } = await client.get<
-        SuccessEnvelope<{ difficulty: RewardDifficulty }>
-      >(`/internal/v1/difficulties/level/${level}`);
-      if (!data?.success || !data.data?.difficulty) {
-        return null;
-      }
-      return normalizeDifficulty(data.data.difficulty);
+      return await this.circuit.run(async () => {
+        const client = this.getClient();
+        const { data } = await client.get<
+          SuccessEnvelope<{ difficulty: RewardDifficulty }>
+        >(`/internal/v1/difficulties/level/${level}`);
+        if (!data?.success || !data.data?.difficulty) {
+          return null;
+        }
+        return normalizeDifficulty(data.data.difficulty);
+      });
     } catch (e) {
       this.logCallFailure("getDifficultyByLevel", e, { level });
       return null;
-    }
-  }
-
-  /** Same as SQS / factory `jobType` for campaign completion batches. */
-  private static readonly GREEN_POINT_JOB_CAMPAIGN_COMPLETION =
-    "CAMPAIGN_COMPLETION_GREEN_POINTS" as const;
-
-  /** Same as reward-service known `jobType` for report completion credits. */
-  private static readonly GREEN_POINT_JOB_REPORT_COMPLETION =
-    "REPORT_COMPLETION_GREEN_POINTS" as const;
-
-  /** Same as reward-service known `jobType` for report vote milestone credits. */
-  private static readonly GREEN_POINT_JOB_REPORT_VOTE_MILESTONE =
-    "REPORT_VOTE_MILESTONE_GREEN_POINTS" as const;
-
-  private static readonly FACEBOOK_RECOGNITION_JOB_TYPE =
-    "CAMPAIGN_FACEBOOK_RECOGNITION" as const;
-
-  /**
-   * Queue green-point credits for approved campaign volunteers (reward worker applies
-   * with Serializable transactions).
-   */
-  async enqueueCampaignCompletionGreenPoints(body: {
-    campaignId: string;
-    credits: { userId: string; points: number }[];
-  }): Promise<void> {
-    const client = this.getClient();
-    try {
-      const { data } = await client.post<
-        SuccessEnvelope<{
-          queued: boolean;
-          type: string;
-        }>
-      >("/internal/v1/green-points/enqueue", {
-        type: RewardServiceClient.GREEN_POINT_JOB_CAMPAIGN_COMPLETION,
-        payload: body,
-      });
-      if (!data?.success || !data.data?.queued) {
-        throw new Error("Invalid reward service enqueue green points response");
-      }
-    } catch (e) {
-      if (axios.isAxiosError(e)) {
-        const apiMsg =
-          (e.response?.data as { message?: string } | undefined)?.message ??
-          e.message;
-        throw new Error(`Reward service enqueue failed: ${apiMsg}`);
-      }
-      throw e;
-    }
-  }
-
-  async enqueueReportCompletionGreenPoints(body: {
-    reportId: string;
-    userId: string;
-    points: number;
-  }): Promise<void> {
-    const client = this.getClient();
-    try {
-      const { data } = await client.post<
-        SuccessEnvelope<{
-          queued: boolean;
-          type: string;
-        }>
-      >("/internal/v1/green-points/enqueue", {
-        type: RewardServiceClient.GREEN_POINT_JOB_REPORT_COMPLETION,
-        payload: body,
-      });
-      if (!data?.success || !data.data?.queued) {
-        throw new Error("Invalid reward service enqueue green points response");
-      }
-    } catch (e) {
-      if (axios.isAxiosError(e)) {
-        const apiMsg =
-          (e.response?.data as { message?: string } | undefined)?.message ??
-          e.message;
-        throw new Error(`Reward service enqueue failed: ${apiMsg}`);
-      }
-      throw e;
-    }
-  }
-
-  /**
-   * Queue green-point credits for report creator when reaching vote thresholds.
-   * Reward worker is idempotent per threshold; safe to enqueue multiple times.
-   */
-  async enqueueReportVoteMilestoneGreenPoints(body: {
-    reportId: string;
-    reportCreatorUserId: string;
-    voteCount: number;
-  }): Promise<void> {
-    const client = this.getClient();
-    try {
-      const { data } = await client.post<
-        SuccessEnvelope<{
-          queued: boolean;
-          type: string;
-        }>
-      >("/internal/v1/green-points/enqueue", {
-        type: RewardServiceClient.GREEN_POINT_JOB_REPORT_VOTE_MILESTONE,
-        payload: body,
-      });
-      if (!data?.success || !data.data?.queued) {
-        throw new Error(
-          "Invalid reward service enqueue report vote milestone response",
-        );
-      }
-    } catch (e) {
-      if (axios.isAxiosError(e)) {
-        const apiMsg =
-          (e.response?.data as { message?: string } | undefined)?.message ??
-          e.message;
-        throw new Error(`Reward service enqueue failed: ${apiMsg}`);
-      }
-      throw e;
-    }
-  }
-
-  async enqueueCampaignFacebookRecognition(body: {
-    campaignId: string;
-    campaignTitle: string;
-    recognizedUserIds: string[];
-    completedAt: string;
-    bannerUrl?: string | null;
-    description?: string | null;
-    recognizedVolunteers?: { name: string; email: string | null }[];
-  }): Promise<void> {
-    const client = this.getClient();
-    try {
-      const { data } = await client.post<
-        SuccessEnvelope<{
-          queued: boolean;
-          type: string;
-        }>
-      >("/internal/v1/facebook-recognition/enqueue", {
-        payload: body,
-      });
-      if (
-        !data?.success ||
-        !data.data?.queued ||
-        data.data?.type !== RewardServiceClient.FACEBOOK_RECOGNITION_JOB_TYPE
-      ) {
-        throw new Error(
-          "Invalid reward service enqueue facebook recognition response",
-        );
-      }
-    } catch (e) {
-      if (axios.isAxiosError(e)) {
-        const apiMsg =
-          (e.response?.data as { message?: string } | undefined)?.message ??
-          e.message;
-        throw new Error(`Reward service enqueue failed: ${apiMsg}`);
-      }
-      throw e;
     }
   }
 

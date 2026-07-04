@@ -1,11 +1,7 @@
-import axios from "axios";
 import { OutboxRelay } from "../outbox-relay";
+import type { OutboxPublisher } from "../outbox-publisher";
 import { OutboxEventType } from "../outbox.types";
 import { GlobalStatus } from "../../constants/status.enum";
-
-jest.mock("axios");
-
-const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 interface PrismaMock {
   $transaction: jest.Mock;
@@ -36,34 +32,34 @@ const greenPointRow = {
 };
 
 describe("OutboxRelay", () => {
-  let post: jest.Mock;
+  let publish: jest.Mock;
+  let publisher: OutboxPublisher;
   let prisma: PrismaMock;
   let relay: OutboxRelay;
 
   beforeEach(() => {
     // Deterministic backoff for assertions.
-    process.env.REWARD_SERVICE_URL = "http://reward.test";
-    process.env.INTERNAL_REWARD_API_KEY = "secret";
     process.env.OUTBOX_RELAY_RETRY_BASE_MS = "1000";
     process.env.OUTBOX_RELAY_MAX_RETRY_DELAY_MS = "5000";
 
-    post = jest.fn();
-    mockedAxios.create.mockReturnValue({ post } as never);
+    publish = jest.fn();
+    publisher = { publish } as OutboxPublisher;
 
     prisma = makePrismaMock();
-    relay = new OutboxRelay(prisma as never);
+    relay = new OutboxRelay(prisma as never, publisher);
   });
 
   describe("happy case", () => {
-    it("green-point event -> POST /green-points/enqueue {type,payload} rồi COMPLETED", async () => {
-      post.mockResolvedValue({});
+    it("green-point event -> publish {id,eventType,payload} vào queue rồi COMPLETED", async () => {
+      publish.mockResolvedValue(undefined);
 
       await (relay as never as { deliver: (r: unknown) => Promise<void> }).deliver(
         greenPointRow,
       );
 
-      expect(post).toHaveBeenCalledWith("/internal/v1/green-points/enqueue", {
-        type: OutboxEventType.REPORT_COMPLETION_GREEN_POINTS,
+      expect(publish).toHaveBeenCalledWith({
+        id: "evt-1",
+        eventType: OutboxEventType.REPORT_COMPLETION_GREEN_POINTS,
         payload: greenPointRow.payload,
       });
       expect(prisma.outboxEvent.update).toHaveBeenCalledTimes(1);
@@ -74,8 +70,8 @@ describe("OutboxRelay", () => {
       expect(arg.data.lastError).toBeNull();
     });
 
-    it("facebook event -> POST /facebook-recognition/enqueue {payload}", async () => {
-      post.mockResolvedValue({});
+    it("facebook event -> publish với eventType = CAMPAIGN_FACEBOOK_RECOGNITION", async () => {
+      publish.mockResolvedValue(undefined);
       const fbRow = {
         id: "evt-fb",
         event_type: OutboxEventType.CAMPAIGN_FACEBOOK_RECOGNITION,
@@ -88,10 +84,11 @@ describe("OutboxRelay", () => {
         fbRow,
       );
 
-      expect(post).toHaveBeenCalledWith(
-        "/internal/v1/facebook-recognition/enqueue",
-        { payload: fbRow.payload },
-      );
+      expect(publish).toHaveBeenCalledWith({
+        id: "evt-fb",
+        eventType: OutboxEventType.CAMPAIGN_FACEBOOK_RECOGNITION,
+        payload: fbRow.payload,
+      });
       expect(prisma.outboxEvent.update.mock.calls[0][0].data.status).toBe(
         GlobalStatus._STATUS_COMPLETED,
       );
@@ -123,8 +120,8 @@ describe("OutboxRelay", () => {
   });
 
   describe("failed case (service khác sập)", () => {
-    it("reward sập -> PENDING + attempts++ + runAfter tương lai, KHÔNG mất", async () => {
-      post.mockRejectedValue(new Error("connect ECONNREFUSED"));
+    it("publish lỗi -> PENDING + attempts++ + runAfter tương lai, KHÔNG mất", async () => {
+      publish.mockRejectedValue(new Error("connect ECONNREFUSED"));
       const before = Date.now();
 
       await (relay as never as { deliver: (r: unknown) => Promise<void> }).deliver(
@@ -143,7 +140,7 @@ describe("OutboxRelay", () => {
     });
 
     it("vượt maxAttempts -> FAILED (giữ lại để replay)", async () => {
-      post.mockRejectedValue(new Error("boom"));
+      publish.mockRejectedValue(new Error("boom"));
 
       await (relay as never as { deliver: (r: unknown) => Promise<void> }).deliver(
         { ...greenPointRow, attempts: 9, max_attempts: 10 },
@@ -155,7 +152,7 @@ describe("OutboxRelay", () => {
     });
 
     it("backoff tăng theo attempts và bị cap ở maxRetryDelayMs", async () => {
-      post.mockRejectedValue(new Error("down"));
+      publish.mockRejectedValue(new Error("down"));
 
       // attempts=4 -> computed 5 -> 1000 * 2^4 = 16000 -> cap 5000
       const before = Date.now();
@@ -166,6 +163,38 @@ describe("OutboxRelay", () => {
       const delay = (arg.data.runAfter as Date).getTime() - before;
       expect(delay).toBeLessThanOrEqual(5000 + 200);
       expect(delay).toBeGreaterThan(1000);
+    });
+  });
+
+  describe("circuit breaker", () => {
+    it("mở circuit sau khi publish lỗi liên tiếp đạt ngưỡng", async () => {
+      process.env.OUTBOX_BREAKER_FAILURE_THRESHOLD = "3";
+      process.env.OUTBOX_BREAKER_OPEN_MS = "30000";
+      const failingPublish = jest
+        .fn()
+        .mockRejectedValue(new Error("connect ECONNREFUSED"));
+      const failingRelay = new OutboxRelay(prisma as never, {
+        publish: failingPublish,
+      } as OutboxPublisher);
+
+      expect(failingRelay.getCircuitState()).toBe("CLOSED");
+      const deliver = (failingRelay as never as {
+        deliver: (r: unknown) => Promise<void>;
+      }).deliver.bind(failingRelay);
+
+      await deliver({ ...greenPointRow, attempts: 0, max_attempts: 10 });
+      await deliver({ ...greenPointRow, attempts: 0, max_attempts: 10 });
+      expect(failingRelay.getCircuitState()).toBe("CLOSED");
+      await deliver({ ...greenPointRow, attempts: 0, max_attempts: 10 });
+      expect(failingRelay.getCircuitState()).toBe("OPEN");
+    });
+
+    it("publish thành công giữ circuit ở trạng thái CLOSED", async () => {
+      publish.mockResolvedValue(undefined);
+      await (relay as never as { deliver: (r: unknown) => Promise<void> }).deliver(
+        greenPointRow,
+      );
+      expect(relay.getCircuitState()).toBe("CLOSED");
     });
   });
 });

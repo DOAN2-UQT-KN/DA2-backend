@@ -1,3 +1,4 @@
+import "./tracer";
 import "dotenv/config";
 import express, { Application } from "express";
 import path from "path";

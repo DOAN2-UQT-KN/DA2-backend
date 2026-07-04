@@ -1,3 +1,15 @@
+# Datadog APM: enable auto-instrumentation before any traced library (fastapi,
+# asyncpg, httpx, openai) is imported. Defaults below apply locally; in Kubernetes
+# DD_AGENT_HOST / DD_ENV are injected via env and take precedence.
+import os
+
+os.environ.setdefault("DD_SERVICE", "ai-service")
+os.environ.setdefault("DD_ENV", "local")
+os.environ.setdefault("DD_VERSION", "dev")
+os.environ.setdefault("DD_LOGS_INJECTION", "true")
+
+import ddtrace.auto  # noqa: E402,F401  must stay above other imports
+
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 

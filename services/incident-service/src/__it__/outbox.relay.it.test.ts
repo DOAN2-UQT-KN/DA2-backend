@@ -1,16 +1,17 @@
 /**
- * Relay end-to-end integration test (real Postgres + real in-process reward HTTP).
+ * Relay end-to-end integration test (real Postgres + in-process fake publisher).
  *
  * Covers what the unit tests mock away: the claim-lock SQL against a real table,
- * real HTTP delivery, and the "reward is down -> retry -> eventually delivered"
- * loop that is the whole reason the outbox exists.
+ * and the "reward intake is down -> retry -> eventually delivered" loop that is
+ * the whole reason the outbox exists. The SQS transport is replaced by a fake
+ * publisher so the test stays hermetic.
  */
 import { randomUUID } from "node:crypto";
 import { OutboxRelay } from "../outbox/outbox-relay";
 import { OutboxEventType } from "../outbox/outbox.types";
 import { GlobalStatus } from "../constants/status.enum";
 import { prisma, resetTables } from "./setup/test-db";
-import { RewardMock } from "./setup/reward-mock";
+import { FakePublisher } from "./setup/fake-publisher";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -27,7 +28,7 @@ type RelayInternals = {
   deliver: (row: ClaimedRow) => Promise<void>;
 };
 
-const rewardMock = new RewardMock();
+const publisher = new FakePublisher();
 
 async function seedEvent(overrides: Record<string, unknown> = {}) {
   return prisma.outboxEvent.create({
@@ -47,29 +48,26 @@ async function seedEvent(overrides: Record<string, unknown> = {}) {
 }
 
 function newRelay(): RelayInternals {
-  return new OutboxRelay(prisma) as never as RelayInternals;
+  return new OutboxRelay(prisma, publisher) as never as RelayInternals;
 }
 
 describe("[it] outbox relay end-to-end", () => {
-  beforeAll(async () => {
-    const url = await rewardMock.start();
-    process.env.REWARD_SERVICE_URL = url;
+  beforeAll(() => {
     process.env.OUTBOX_RELAY_RETRY_BASE_MS = "20";
     process.env.OUTBOX_RELAY_MAX_RETRY_DELAY_MS = "200";
     process.env.OUTBOX_RELAY_BATCH_SIZE = "20";
   });
 
   afterAll(async () => {
-    await rewardMock.stop();
     await prisma.$disconnect();
   });
 
   beforeEach(async () => {
     await resetTables();
-    rewardMock.reset();
+    publisher.reset();
   });
 
-  it("claim + deliver: green-point event reaches reward and becomes COMPLETED", async () => {
+  it("claim + deliver: green-point event reaches reward intake and becomes COMPLETED", async () => {
     const event = await seedEvent();
     const relay = newRelay();
 
@@ -84,14 +82,11 @@ describe("[it] outbox relay end-to-end", () => {
 
     await relay.deliver(claimed[0]);
 
-    expect(rewardMock.requests).toHaveLength(1);
-    expect(rewardMock.requests[0]).toMatchObject({
-      path: "/internal/v1/green-points/enqueue",
-      apiKey: "it-internal-key",
-      body: {
-        type: OutboxEventType.REPORT_COMPLETION_GREEN_POINTS,
-        payload: { reportId: "r1", userId: "u1", points: 10 },
-      },
+    expect(publisher.published).toHaveLength(1);
+    expect(publisher.published[0]).toMatchObject({
+      id: event.id,
+      eventType: OutboxEventType.REPORT_COMPLETION_GREEN_POINTS,
+      payload: { reportId: "r1", userId: "u1", points: 10 },
     });
 
     const done = await prisma.outboxEvent.findUniqueOrThrow({
@@ -114,12 +109,12 @@ describe("[it] outbox relay end-to-end", () => {
     expect(second).toHaveLength(0);
   });
 
-  it("reward is down -> event goes back to PENDING (not lost), then is delivered on retry", async () => {
+  it("reward intake is down -> event goes back to PENDING (not lost), then is delivered on retry", async () => {
     const event = await seedEvent();
     const relay = newRelay();
 
-    // 1) reward returns 500.
-    rewardMock.setNextStatus(500);
+    // 1) publish throws once.
+    publisher.failNext(1);
     const [row] = await relay.claimBatch();
     await relay.deliver(row);
 
@@ -133,8 +128,7 @@ describe("[it] outbox relay end-to-end", () => {
     expect(afterFail.lastError).toBeTruthy();
     expect(afterFail.runAfter.getTime()).toBeGreaterThan(Date.now() - 50);
 
-    // 2) reward recovers; backoff is tiny in tests so the row is claimable again.
-    rewardMock.setNextStatus(202);
+    // 2) intake recovers; backoff is tiny in tests so the row is claimable again.
     await sleep(60);
     const [retryRow] = await relay.claimBatch();
     expect(retryRow).toBeDefined();
@@ -145,15 +139,15 @@ describe("[it] outbox relay end-to-end", () => {
     });
     expect(recovered.status).toBe(GlobalStatus._STATUS_COMPLETED);
     expect(recovered.attempts).toBe(1);
-    // 1 failed + 1 successful HTTP call — event was never dropped.
-    expect(rewardMock.requests).toHaveLength(2);
+    // 1 failed + 1 successful publish — event was never dropped.
+    expect(publisher.published).toHaveLength(1);
   });
 
   it("exceeding maxAttempts -> FAILED (quarantined for replay, not silently dropped)", async () => {
     const event = await seedEvent({ attempts: 0, maxAttempts: 1 });
     const relay = newRelay();
 
-    rewardMock.setNextStatus(500);
+    publisher.failNext(1);
     const [row] = await relay.claimBatch();
     await relay.deliver(row);
 
