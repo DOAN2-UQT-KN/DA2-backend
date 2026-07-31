@@ -43,6 +43,10 @@ jobs:
       - name: Generate Prisma client
         run: cd services/incident-service && npm run prisma:generate
 
+      # @da2/* file: deps ship source only; dist/ is gitignored and must be built in CI.
+      - name: Build shared packages
+        run: cd services/incident-service && npm run prebuild
+
       - name: Unit tests
         run: cd services/incident-service && npm test
 
