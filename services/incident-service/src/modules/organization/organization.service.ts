@@ -1,6 +1,11 @@
 import { GlobalStatus, JoinRequestStatus } from "../../constants/status.enum";
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 import prisma from "../../config/prisma.client";
+import { Prisma, type Organization } from "@prisma/client";
+import {
+  nextUniqueOrganizationSlug,
+  slugifyOrganizationName,
+} from "@da2/constants";
 import type {
   CreateOrganizationBody,
   GetOrganizationJoinRequestsQuery,
@@ -65,24 +70,11 @@ function enqueueOrganizationTranslationJob(
 type OrganizationCore = Omit<OrganizationResponse, "owner">;
 
 export class OrganizationService {
-  private organizationCoreFromRow(row: {
-    id: string;
-    name: string;
-    description: string | null;
-    descriptionVi?: string | null;
-    descriptionEn?: string | null;
-    logoUrl: string;
-    backgroundUrl: string | null;
-    contactEmail: string | null;
-    isEmailVerified: boolean;
-    status: number;
-    ownerId: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }): OrganizationCore {
+  private organizationCoreFromRow(row: Organization): OrganizationCore {
     return {
       id: row.id,
       name: row.name,
+      slug: row.slug,
       description: null,
       descriptionVi: row.descriptionVi ?? row.description ?? null,
       descriptionEn: row.descriptionEn ?? null,
@@ -184,6 +176,43 @@ export class OrganizationService {
     }
   }
 
+  private isUniqueSlugConflict(error: unknown): boolean {
+    if (
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== "P2002"
+    ) {
+      return false;
+    }
+    const target = error.meta?.target;
+    if (typeof target === "string") {
+      return target.includes("slug");
+    }
+    if (Array.isArray(target)) {
+      return target.some((t) => String(t).includes("slug"));
+    }
+    return false;
+  }
+
+  private async allocateUniqueSlug(name: string): Promise<string> {
+    const base = slugifyOrganizationName(name);
+    const taken = new Set(
+      await organizationRepository.findSlugsConflictingWithBase(base),
+    );
+    try {
+      return nextUniqueOrganizationSlug(base, taken);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "organization_slug_exhausted"
+      ) {
+        throw new HttpError(
+          HTTP_STATUS.CONFLICT.withMessage("Unable to allocate a unique slug"),
+        );
+      }
+      throw error;
+    }
+  }
+
   async createOrganization(
     ownerId: string,
     body: CreateOrganizationBody,
@@ -206,7 +235,7 @@ export class OrganizationService {
       ? providedEn || sourceText
       : null;
 
-    const created = await organizationRepository.create({
+    const createPayload = {
       name,
       description: descriptionVi ?? legacy ?? null,
       descriptionVi,
@@ -216,7 +245,30 @@ export class OrganizationService {
       contactEmail,
       ownerId,
       createdBy: ownerId,
-    });
+    };
+
+    let created: Awaited<ReturnType<typeof organizationRepository.create>> | null =
+      null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const slug = await this.allocateUniqueSlug(name);
+      try {
+        created = await organizationRepository.create({
+          ...createPayload,
+          slug,
+        });
+        break;
+      } catch (error) {
+        if (this.isUniqueSlugConflict(error) && attempt < 4) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (!created) {
+      throw new HttpError(
+        HTTP_STATUS.CONFLICT.withMessage("Unable to allocate a unique slug"),
+      );
+    }
 
     if (sourceText && (!providedVi || !providedEn)) {
       enqueueOrganizationTranslationJob(created.id, [
@@ -272,7 +324,7 @@ export class OrganizationService {
   async confirmOrganizationContactEmail(
     organizationId: string,
     email: string,
-  ): Promise<void> {
+  ): Promise<{ slug: string }> {
     const org = await organizationRepository.findById(organizationId);
     if (!org) {
       throw new HttpError(
@@ -286,12 +338,13 @@ export class OrganizationService {
       );
     }
     if (org.isEmailVerified) {
-      return;
+      return { slug: org.slug };
     }
     await organizationRepository.update(organizationId, {
       isEmailVerified: true,
       updatedBy: org.ownerId,
     });
+    return { slug: org.slug };
   }
 
   /**
@@ -399,6 +452,10 @@ export class OrganizationService {
     const patch: Parameters<typeof organizationRepository.update>[1] = {
       updatedBy: ownerId,
     };
+
+    if (!org.slug) {
+      patch.slug = await this.allocateUniqueSlug(nextName);
+    }
 
     if (body.name !== undefined) {
       patch.name = nextName;
@@ -562,6 +619,22 @@ export class OrganizationService {
   ): Promise<OrganizationResponse | null> {
     const row = await organizationRepository.findById(organizationId);
     if (!row) return null;
+    return this.hydrateOrganizationForViewer(row, viewerUserId);
+  }
+
+  async getBySlug(
+    slug: string,
+    viewerUserId?: string,
+  ): Promise<OrganizationResponse | null> {
+    const row = await organizationRepository.findBySlug(slug);
+    if (!row) return null;
+    return this.hydrateOrganizationForViewer(row, viewerUserId);
+  }
+
+  private async hydrateOrganizationForViewer(
+    row: Organization,
+    viewerUserId?: string,
+  ): Promise<OrganizationResponse> {
     const organization = await this.withOwner(
       this.organizationCoreFromRow(row),
     );
@@ -570,11 +643,11 @@ export class OrganizationService {
     }
     const latestJoin =
       await organizationJoiningRequestRepository.findLatestByOrganizationAndRequester(
-        organizationId,
+        row.id,
         viewerUserId,
       );
     const isMember = await organizationMemberRepository.isActiveMember(
-      organizationId,
+      row.id,
       viewerUserId,
     );
     const requestStatus = this.joinRequestStatusForOrganizationDetail(
@@ -795,6 +868,7 @@ export class OrganizationService {
     void this.notifyOrganizationOwnerOfJoinRequest({
       ownerId: org.ownerId,
       organizationId,
+      organizationSlug: org.slug,
       organizationName: org.name,
       requesterId: row.requesterId,
       requesterById,
@@ -814,6 +888,7 @@ export class OrganizationService {
   private async notifyOrganizationOwnerOfJoinRequest(params: {
     ownerId: string;
     organizationId: string;
+    organizationSlug: string;
     organizationName: string;
     requesterId: string;
     requesterById: ReadonlyMap<string, OrganizationOwnerResponse>;
@@ -826,6 +901,7 @@ export class OrganizationService {
       volunteerName,
       reportTitle: params.organizationName,
       organizationId: params.organizationId,
+      organizationSlug: params.organizationSlug,
     });
   }
 

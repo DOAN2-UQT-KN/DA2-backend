@@ -175,6 +175,7 @@ export class CampaignService {
           contact_email: org.contactEmail,
           logo_url: org.logoUrl,
           name: org.name,
+          slug: org.slug,
           ownerId: org.ownerId,
         },
       ]),
@@ -192,6 +193,7 @@ export class CampaignService {
             contact_email: orgRow.contact_email,
             logo_url: orgRow.logo_url,
             name: orgRow.name,
+            slug: orgRow.slug,
           }
         : undefined;
 

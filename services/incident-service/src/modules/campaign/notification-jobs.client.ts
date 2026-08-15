@@ -226,6 +226,7 @@ export async function enqueueVolunteerRequestWebsiteNotification(params: {
   reportTitle: string;
   campaignId?: string;
   organizationId?: string;
+  organizationSlug?: string;
 }): Promise<void> {
   const payload: Record<string, string> = {
     volunteerName: params.volunteerName,
@@ -236,6 +237,9 @@ export async function enqueueVolunteerRequestWebsiteNotification(params: {
   }
   if (params.organizationId) {
     payload.organizationId = params.organizationId;
+  }
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
   }
 
   await enqueueWebsiteNotificationsToUsers({

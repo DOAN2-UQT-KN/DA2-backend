@@ -198,6 +198,9 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
   "GET /api/v1/organizations/:id": {
     responseData: "OrganizationOneEnvelopeData",
   },
+  "GET /api/v1/organizations/by-slug/:slug": {
+    responseData: "OrganizationOneEnvelopeData",
+  },
   "PUT /api/v1/organizations/:id/verify": {
     requestBody: "AdminVerifyOrganizationBody",
     responseData: "OrganizationOneEnvelopeData",

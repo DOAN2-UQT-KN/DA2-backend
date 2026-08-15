@@ -77,6 +77,17 @@ router.get(
 router.get("/", authenticate, organizationController.listOrganizations);
 
 /**
+ * @route   GET /api/v1/organizations/by-slug/:slug
+ * @desc    Organization by public slug (includes `owner` profile from identity-service).
+ * @access  Private
+ */
+router.get(
+  "/by-slug/:slug",
+  authenticate,
+  organizationController.getOrganizationBySlug,
+);
+
+/**
  * @route   PUT /api/v1/organizations/:id/verify
  * @desc    Admin approve or reject an organization (`GlobalStatus` in body: approved or rejected).
  * @access  Private (admin)

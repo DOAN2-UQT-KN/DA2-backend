@@ -27,6 +27,12 @@ import { verifyAndConsumeOrganizationContactEmailToken } from "./identity-organi
 import { organizationService } from "./organization.service";
 
 const orgIdParam = param("id").isUUID().withMessage("id must be a valid UUID");
+const orgSlugParam = param("slug")
+  .trim()
+  .notEmpty()
+  .isLength({ max: 220 })
+  .matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  .withMessage("slug must be a URL-friendly lowercase identifier");
 
 function parseOrganizationListEmailVerifiedQuery(
   req: Request,
@@ -274,11 +280,11 @@ export class OrganizationController {
       }
 
       try {
-        await organizationService.confirmOrganizationContactEmail(
+        const verified = await organizationService.confirmOrganizationContactEmail(
           organizationId,
           email,
         );
-        res.redirect(302, redirectAfterContactEmailVerified(organizationId));
+        res.redirect(302, redirectAfterContactEmailVerified(verified.slug));
       } catch (e) {
         if (HttpError.isHttpError(e)) {
           const status = e.statusResponse.status;
@@ -594,6 +600,42 @@ export class OrganizationController {
         );
         if (!organization) {
           return sendError(res, HTTP_STATUS.NOT_FOUND);
+        }
+        return sendSuccess(res, HTTP_STATUS.OK, { organization });
+      } catch (error) {
+        if (sendHttpErrorResponse(res, error)) {
+          return;
+        }
+        throw error;
+      }
+    },
+  ];
+
+  getOrganizationBySlug = [
+    orgSlugParam,
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      if (!req.user?.userId) {
+        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+      }
+
+      try {
+        const organization = await organizationService.getBySlug(
+          req.params.slug,
+          req.user.userId,
+        );
+        if (!organization) {
+          return sendError(
+            res,
+            HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+          );
         }
         return sendSuccess(res, HTTP_STATUS.OK, { organization });
       } catch (error) {

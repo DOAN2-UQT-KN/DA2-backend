@@ -9,6 +9,7 @@ export interface CampaignOrganizationResponse {
   contact_email: string | null;
   logo_url: string | null;
   name: string | null;
+  slug: string | null;
 }
 
 export interface CampaignManagerBasicResponse {

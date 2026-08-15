@@ -44,6 +44,7 @@ export interface UpdateOrganizationBody {
 export interface OrganizationResponse {
   id: string;
   name: string;
+  slug: string;
   description: string | null;
   descriptionVi?: string | null;
   descriptionEn?: string | null;
