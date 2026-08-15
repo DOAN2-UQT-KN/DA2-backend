@@ -168,11 +168,31 @@ export class OrganizationService {
     };
   }
 
+  private async assertUniqueNameAndContactEmail(
+    name: string,
+    contactEmail: string,
+    excludeOrganizationId?: string,
+  ): Promise<void> {
+    const existing =
+      await organizationRepository.findActiveByNameAndContactEmail(
+        name,
+        contactEmail,
+        excludeOrganizationId,
+      );
+    if (existing) {
+      throw new HttpError(HTTP_STATUS.ORGANIZATION_ALREADY_EXISTS);
+    }
+  }
+
   async createOrganization(
     ownerId: string,
     body: CreateOrganizationBody,
     _authorization?: string,
   ): Promise<OrganizationResponse> {
+    const name = body.name.trim();
+    const contactEmail = body.contactEmail.trim().toLowerCase();
+    await this.assertUniqueNameAndContactEmail(name, contactEmail);
+
     const providedVi = body.descriptionVi?.trim() || "";
     const providedEn = body.descriptionEn?.trim() || "";
     const legacy = body.description?.trim() || "";
@@ -187,13 +207,13 @@ export class OrganizationService {
       : null;
 
     const created = await organizationRepository.create({
-      name: body.name.trim(),
+      name,
       description: descriptionVi ?? legacy ?? null,
       descriptionVi,
       descriptionEn,
       logoUrl: body.logoUrl.trim(),
       backgroundUrl: body.backgroundUrl?.trim() || null,
-      contactEmail: body.contactEmail.trim().toLowerCase(),
+      contactEmail,
       ownerId,
       createdBy: ownerId,
     });
@@ -363,12 +383,25 @@ export class OrganizationService {
     }
 
     const prevEmailNorm = org.contactEmail?.toLowerCase().trim() ?? "";
+    const nextName = body.name !== undefined ? body.name.trim() : org.name;
+    const nextEmail =
+      body.contactEmail !== undefined
+        ? body.contactEmail.trim().toLowerCase()
+        : prevEmailNorm;
+    if (nextName && nextEmail) {
+      await this.assertUniqueNameAndContactEmail(
+        nextName,
+        nextEmail,
+        organizationId,
+      );
+    }
+
     const patch: Parameters<typeof organizationRepository.update>[1] = {
       updatedBy: ownerId,
     };
 
     if (body.name !== undefined) {
-      patch.name = body.name.trim();
+      patch.name = nextName;
     }
     if (body.description !== undefined) {
       patch.description = body.description?.trim() || null;

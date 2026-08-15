@@ -86,6 +86,28 @@ export class OrganizationRepository {
     });
   }
 
+  /** Active org with the same name + contact email (name match is case-insensitive). */
+  async findActiveByNameAndContactEmail(
+    name: string,
+    contactEmail: string,
+    excludeId?: string,
+  ) {
+    const trimmedName = name.trim();
+    const normalizedEmail = contactEmail.trim().toLowerCase();
+    if (!trimmedName || !normalizedEmail) {
+      return null;
+    }
+    return this.prisma.organization.findFirst({
+      where: {
+        deletedAt: null,
+        contactEmail: normalizedEmail,
+        name: { equals: trimmedName, mode: "insensitive" },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+  }
+
   async findManyByIds(ids: string[]) {
     if (ids.length === 0) {
       return [];
