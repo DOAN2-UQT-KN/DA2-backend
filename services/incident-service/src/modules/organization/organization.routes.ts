@@ -59,7 +59,7 @@ router.delete(
 
 /**
  * @route   GET /api/v1/organizations/my
- * @desc    Organizations I own or belong to as a member (search, status, is_email_verified, is_owner, pagination). Each item may include request_status for my join request.
+ * @desc    Organizations I own or belong to as a member (search, status, is_email_verified, is_owner, pagination). Each item includes members (active member count) and may include request_status / join_request_id for my join request.
  * @access  Private
  * @query   search, status (repeat or comma list), is_email_verified, is_owner (or isOwner: true|false|1|0), request_status (repeat or comma), page, limit, sortBy, sortOrder
  */
@@ -71,16 +71,27 @@ router.get(
 
 /**
  * @route   GET /api/v1/organizations
- * @desc    List organizations; filter by search, org status (repeat/comma), is_email_verified, request_status (repeat/comma). Each item may include request_status when pending/approved.
+ * @desc    List organizations; filter by search, org status (repeat/comma), is_email_verified, request_status (repeat/comma). Each item includes members (active member count) and may include request_status / join_request_id when pending/approved.
  * @access  Private
  */
 router.get("/", authenticate, organizationController.listOrganizations);
 
 /**
+ * @route   GET /api/v1/organizations/by-slug/:slug
+ * @desc    Organization by public slug (includes `owner` profile from identity-service; may include request_status / join_request_id for the viewer).
+ * @access  Private
+ */
+router.get(
+  "/by-slug/:slug",
+  authenticate,
+  organizationController.getOrganizationBySlug,
+);
+
+/**
  * @route   PUT /api/v1/organizations/:id/verify
- * @desc    Admin approve or reject an organization (`GlobalStatus` in body: approved or rejected).
+ * @desc    Admin verify or ban an organization (`GlobalStatus` in body: active or inactive).
  * @access  Private (admin)
- * @body    { status } — `1` (`_STATUS_ACTIVE`) to approve, `2` (`_STATUS_INACTIVE`) to reject (draft / awaiting review only).
+ * @body    { status, reject_reason? } — `1` (`_STATUS_ACTIVE`) to verify, `2` (`_STATUS_INACTIVE`) to ban. `reject_reason` is required when banning.
  */
 router.put(
   "/:id/verify",

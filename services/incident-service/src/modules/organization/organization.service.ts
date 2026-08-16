@@ -1,6 +1,11 @@
 import { GlobalStatus, JoinRequestStatus } from "../../constants/status.enum";
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 import prisma from "../../config/prisma.client";
+import { Prisma, type Organization } from "@prisma/client";
+import {
+  nextUniqueOrganizationSlug,
+  slugifyOrganizationName,
+} from "@da2/constants";
 import type {
   CreateOrganizationBody,
   GetOrganizationJoinRequestsQuery,
@@ -20,7 +25,12 @@ import {
   fetchOrganizationOwnersByUserIds,
   getUserProfile,
 } from "./identity-user.client";
-import { enqueueVolunteerRequestWebsiteNotification } from "../campaign/notification-jobs.client";
+import {
+  enqueueOrganizationApprovedWebsiteNotification,
+  enqueueOrganizationRejectedWebsiteNotification,
+  enqueueVolunteerApprovedWebsiteNotification,
+  enqueueVolunteerRequestWebsiteNotification,
+} from "../campaign/notification-jobs.client";
 import { enqueueOrganizationContactVerificationEmail } from "./organization-contact-email-notify.client";
 import { buildVerifyContactEmailRequestUrl } from "./organization-contact-email-urls";
 import { organizationJoiningRequestRepository } from "./organization_joining_request.repository";
@@ -65,24 +75,11 @@ function enqueueOrganizationTranslationJob(
 type OrganizationCore = Omit<OrganizationResponse, "owner">;
 
 export class OrganizationService {
-  private organizationCoreFromRow(row: {
-    id: string;
-    name: string;
-    description: string | null;
-    descriptionVi?: string | null;
-    descriptionEn?: string | null;
-    logoUrl: string;
-    backgroundUrl: string | null;
-    contactEmail: string | null;
-    isEmailVerified: boolean;
-    status: number;
-    ownerId: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }): OrganizationCore {
+  private organizationCoreFromRow(row: Organization): OrganizationCore {
     return {
       id: row.id,
       name: row.name,
+      slug: row.slug,
       description: null,
       descriptionVi: row.descriptionVi ?? row.description ?? null,
       descriptionEn: row.descriptionEn ?? null,
@@ -91,6 +88,7 @@ export class OrganizationService {
       contactEmail: row.contactEmail,
       isEmailVerified: row.isEmailVerified,
       status: row.status,
+      rejectReason: row.rejectReason ?? null,
       ownerId: row.ownerId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -168,11 +166,68 @@ export class OrganizationService {
     };
   }
 
+  private async assertUniqueNameAndContactEmail(
+    name: string,
+    contactEmail: string,
+    excludeOrganizationId?: string,
+  ): Promise<void> {
+    const existing =
+      await organizationRepository.findActiveByNameAndContactEmail(
+        name,
+        contactEmail,
+        excludeOrganizationId,
+      );
+    if (existing) {
+      throw new HttpError(HTTP_STATUS.ORGANIZATION_ALREADY_EXISTS);
+    }
+  }
+
+  private isUniqueSlugConflict(error: unknown): boolean {
+    if (
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== "P2002"
+    ) {
+      return false;
+    }
+    const target = error.meta?.target;
+    if (typeof target === "string") {
+      return target.includes("slug");
+    }
+    if (Array.isArray(target)) {
+      return target.some((t) => String(t).includes("slug"));
+    }
+    return false;
+  }
+
+  private async allocateUniqueSlug(name: string): Promise<string> {
+    const base = slugifyOrganizationName(name);
+    const taken = new Set(
+      await organizationRepository.findSlugsConflictingWithBase(base),
+    );
+    try {
+      return nextUniqueOrganizationSlug(base, taken);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "organization_slug_exhausted"
+      ) {
+        throw new HttpError(
+          HTTP_STATUS.CONFLICT.withMessage("Unable to allocate a unique slug"),
+        );
+      }
+      throw error;
+    }
+  }
+
   async createOrganization(
     ownerId: string,
     body: CreateOrganizationBody,
     _authorization?: string,
   ): Promise<OrganizationResponse> {
+    const name = body.name.trim();
+    const contactEmail = body.contactEmail.trim().toLowerCase();
+    await this.assertUniqueNameAndContactEmail(name, contactEmail);
+
     const providedVi = body.descriptionVi?.trim() || "";
     const providedEn = body.descriptionEn?.trim() || "";
     const legacy = body.description?.trim() || "";
@@ -186,17 +241,40 @@ export class OrganizationService {
       ? providedEn || sourceText
       : null;
 
-    const created = await organizationRepository.create({
-      name: body.name.trim(),
+    const createPayload = {
+      name,
       description: descriptionVi ?? legacy ?? null,
       descriptionVi,
       descriptionEn,
       logoUrl: body.logoUrl.trim(),
       backgroundUrl: body.backgroundUrl?.trim() || null,
-      contactEmail: body.contactEmail.trim().toLowerCase(),
+      contactEmail,
       ownerId,
       createdBy: ownerId,
-    });
+    };
+
+    let created: Awaited<ReturnType<typeof organizationRepository.create>> | null =
+      null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const slug = await this.allocateUniqueSlug(name);
+      try {
+        created = await organizationRepository.create({
+          ...createPayload,
+          slug,
+        });
+        break;
+      } catch (error) {
+        if (this.isUniqueSlugConflict(error) && attempt < 4) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (!created) {
+      throw new HttpError(
+        HTTP_STATUS.CONFLICT.withMessage("Unable to allocate a unique slug"),
+      );
+    }
 
     if (sourceText && (!providedVi || !providedEn)) {
       enqueueOrganizationTranslationJob(created.id, [
@@ -252,7 +330,7 @@ export class OrganizationService {
   async confirmOrganizationContactEmail(
     organizationId: string,
     email: string,
-  ): Promise<void> {
+  ): Promise<{ slug: string }> {
     const org = await organizationRepository.findById(organizationId);
     if (!org) {
       throw new HttpError(
@@ -266,22 +344,25 @@ export class OrganizationService {
       );
     }
     if (org.isEmailVerified) {
-      return;
+      return { slug: org.slug };
     }
     await organizationRepository.update(organizationId, {
       isEmailVerified: true,
       updatedBy: org.ownerId,
     });
+    return { slug: org.slug };
   }
 
   /**
    * Admin-only at controller: set organization lifecycle after review
-   * (`status` → approved or rejected).
+   * (`status` → verified/active or banned/inactive).
+   * Ban requires a non-empty `rejectReason`. Verify may omit it (clears any previous reason).
    */
   async adminVerifyOrganization(
     organizationId: string,
     adminUserId: string,
     targetStatus: GlobalStatus._STATUS_ACTIVE | GlobalStatus._STATUS_INACTIVE,
+    rejectReason?: string | null,
   ): Promise<OrganizationResponse> {
     const existing = await organizationRepository.findById(organizationId);
     if (!existing) {
@@ -289,6 +370,9 @@ export class OrganizationService {
         HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
       );
     }
+
+    const trimmedReason =
+      typeof rejectReason === "string" ? rejectReason.trim() : "";
 
     if (targetStatus === GlobalStatus._STATUS_ACTIVE) {
       if (existing.status === GlobalStatus._STATUS_ACTIVE) {
@@ -308,37 +392,79 @@ export class OrganizationService {
       }
       const updated = await organizationRepository.update(organizationId, {
         status: GlobalStatus._STATUS_ACTIVE,
+        rejectReason: trimmedReason || null,
+        updatedBy: adminUserId,
+      });
+      this.notifyOwnerOfOrganizationVerified(updated, "approved");
+      return this.withOwner(this.organizationCoreFromRow(updated));
+    }
+
+    if (!trimmedReason) {
+      throw new HttpError(
+        HTTP_STATUS.VALIDATION_ERROR.withMessage(
+          "reject_reason is required when banning an organization",
+        ),
+      );
+    }
+
+    if (existing.status === GlobalStatus._STATUS_INACTIVE) {
+      if (existing.rejectReason === trimmedReason) {
+        return this.withOwner(this.organizationCoreFromRow(existing));
+      }
+      const updated = await organizationRepository.update(organizationId, {
+        rejectReason: trimmedReason,
         updatedBy: adminUserId,
       });
       return this.withOwner(this.organizationCoreFromRow(updated));
     }
-
-    if (existing.status === GlobalStatus._STATUS_INACTIVE) {
-      return this.withOwner(this.organizationCoreFromRow(existing));
-    }
-    if (existing.status === GlobalStatus._STATUS_ACTIVE) {
-      throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Cannot reject an organization that is already active",
-        ),
-      );
-    }
-    const canReject =
+    const canBan =
       existing.status === GlobalStatus._STATUS_DRAFT ||
       existing.status === GlobalStatus._STATUS_PENDING ||
-      existing.status === GlobalStatus._STATUS_INREVIEW;
-    if (!canReject) {
+      existing.status === GlobalStatus._STATUS_INREVIEW ||
+      existing.status === GlobalStatus._STATUS_ACTIVE;
+    if (!canBan) {
       throw new HttpError(
         HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Organization can only be rejected while it is in draft or awaiting review",
+          "Organization cannot be banned from its current status",
         ),
       );
     }
     const updated = await organizationRepository.update(organizationId, {
       status: GlobalStatus._STATUS_INACTIVE,
+      rejectReason: trimmedReason,
       updatedBy: adminUserId,
     });
+    this.notifyOwnerOfOrganizationVerified(updated, "banned", trimmedReason);
     return this.withOwner(this.organizationCoreFromRow(updated));
+  }
+
+  /** Best-effort in-app notice to the org owner after admin verify/ban. */
+  private notifyOwnerOfOrganizationVerified(
+    org: Organization,
+    outcome: "approved" | "banned",
+    rejectReason?: string,
+  ): void {
+    const run =
+      outcome === "approved"
+        ? enqueueOrganizationApprovedWebsiteNotification({
+            userId: org.ownerId,
+            organizationName: org.name,
+            organizationId: org.id,
+            organizationSlug: org.slug,
+          })
+        : enqueueOrganizationRejectedWebsiteNotification({
+            userId: org.ownerId,
+            organizationName: org.name,
+            organizationId: org.id,
+            organizationSlug: org.slug,
+            rejectReason: rejectReason ?? "",
+          });
+    void run.catch((err) => {
+      console.warn(
+        `[organization] failed to notify owner of organization ${outcome}`,
+        err,
+      );
+    });
   }
 
   /** Owner-only: partial update; changing `contactEmail` resets verification and queues a new email. */
@@ -363,12 +489,29 @@ export class OrganizationService {
     }
 
     const prevEmailNorm = org.contactEmail?.toLowerCase().trim() ?? "";
+    const nextName = body.name !== undefined ? body.name.trim() : org.name;
+    const nextEmail =
+      body.contactEmail !== undefined
+        ? body.contactEmail.trim().toLowerCase()
+        : prevEmailNorm;
+    if (nextName && nextEmail) {
+      await this.assertUniqueNameAndContactEmail(
+        nextName,
+        nextEmail,
+        organizationId,
+      );
+    }
+
     const patch: Parameters<typeof organizationRepository.update>[1] = {
       updatedBy: ownerId,
     };
 
+    if (!org.slug) {
+      patch.slug = await this.allocateUniqueSlug(nextName);
+    }
+
     if (body.name !== undefined) {
-      patch.name = body.name.trim();
+      patch.name = nextName;
     }
     if (body.description !== undefined) {
       patch.description = body.description?.trim() || null;
@@ -523,12 +666,52 @@ export class OrganizationService {
     return undefined;
   }
 
+  private attachViewerJoinState(
+    organization: OrganizationResponse,
+    latest: { id: string; status: number } | undefined,
+    isMember: boolean,
+  ): OrganizationResponse {
+    const requestStatus = this.joinRequestStatusForOrganizationDetail(
+      latest?.status,
+      isMember,
+    );
+    const next: OrganizationResponse = isMember
+      ? { ...organization, isMember }
+      : organization;
+    if (requestStatus === undefined || latest === undefined) {
+      return next;
+    }
+    return {
+      ...next,
+      requestStatus,
+      ...(requestStatus === JoinRequestStatus._STATUS_PENDING
+        ? { joinRequestId: latest.id }
+        : {}),
+    };
+  }
+
   async getById(
     organizationId: string,
     viewerUserId?: string,
   ): Promise<OrganizationResponse | null> {
     const row = await organizationRepository.findById(organizationId);
     if (!row) return null;
+    return this.hydrateOrganizationForViewer(row, viewerUserId);
+  }
+
+  async getBySlug(
+    slug: string,
+    viewerUserId?: string,
+  ): Promise<OrganizationResponse | null> {
+    const row = await organizationRepository.findBySlug(slug);
+    if (!row || row.status === GlobalStatus._STATUS_INACTIVE) return null;
+    return this.hydrateOrganizationForViewer(row, viewerUserId);
+  }
+
+  private async hydrateOrganizationForViewer(
+    row: Organization,
+    viewerUserId?: string,
+  ): Promise<OrganizationResponse> {
     const organization = await this.withOwner(
       this.organizationCoreFromRow(row),
     );
@@ -537,23 +720,20 @@ export class OrganizationService {
     }
     const latestJoin =
       await organizationJoiningRequestRepository.findLatestByOrganizationAndRequester(
-        organizationId,
+        row.id,
         viewerUserId,
       );
     const isMember = await organizationMemberRepository.isActiveMember(
-      organizationId,
+      row.id,
       viewerUserId,
     );
-    const requestStatus = this.joinRequestStatusForOrganizationDetail(
-      latestJoin?.status,
+    return this.attachViewerJoinState(
+      organization,
+      latestJoin
+        ? { id: latestJoin.id, status: latestJoin.status }
+        : undefined,
       isMember,
     );
-    const withMember: OrganizationResponse = isMember
-      ? { ...organization, isMember }
-      : organization;
-    return requestStatus !== undefined
-      ? { ...withMember, requestStatus }
-      : withMember;
   }
 
   private async organizationIdsForJoinRequestStatusFilter(
@@ -581,20 +761,35 @@ export class OrganizationService {
         viewerUserId,
         organizations.map((o) => o.id),
       );
-    const statusByOrgId =
+    const latestByOrgId =
       await organizationJoiningRequestRepository.findLatestStatusByOrganizationForRequester(
         viewerUserId,
         organizations.map((o) => o.id),
       );
     return organizations.map((org) => {
       const isMember = memberOrgIds.has(org.id);
-      const requestStatus = this.joinRequestStatusForOrganizationDetail(
-        statusByOrgId.get(org.id),
+      return this.attachViewerJoinState(
+        org,
+        latestByOrgId.get(org.id),
         isMember,
       );
-      const next: OrganizationResponse = isMember ? { ...org, isMember } : org;
-      return requestStatus !== undefined ? { ...next, requestStatus } : next;
     });
+  }
+
+  private async withMemberCounts(
+    organizations: OrganizationResponse[],
+  ): Promise<OrganizationResponse[]> {
+    if (organizations.length === 0) {
+      return organizations;
+    }
+    const counts =
+      await organizationMemberRepository.countActiveByOrganizationIds(
+        organizations.map((o) => o.id),
+      );
+    return organizations.map((org) => ({
+      ...org,
+      members: counts.get(org.id) ?? 0,
+    }));
   }
 
   async listMyOrganizations(
@@ -645,9 +840,8 @@ export class OrganizationService {
       rows.map((r) => this.organizationCoreFromRow(r)),
     );
     return {
-      organizations: await this.withOrganizationListRequestStatus(
-        organizations,
-        userId,
+      organizations: await this.withMemberCounts(
+        await this.withOrganizationListRequestStatus(organizations, userId),
       ),
       total,
       page,
@@ -701,9 +895,11 @@ export class OrganizationService {
       rows.map((r) => this.organizationCoreFromRow(r)),
     );
     return {
-      organizations: await this.withOrganizationListRequestStatus(
-        organizations,
-        viewerUserId,
+      organizations: await this.withMemberCounts(
+        await this.withOrganizationListRequestStatus(
+          organizations,
+          viewerUserId,
+        ),
       ),
       total,
       page,
@@ -762,6 +958,7 @@ export class OrganizationService {
     void this.notifyOrganizationOwnerOfJoinRequest({
       ownerId: org.ownerId,
       organizationId,
+      organizationSlug: org.slug,
       organizationName: org.name,
       requesterId: row.requesterId,
       requesterById,
@@ -781,6 +978,7 @@ export class OrganizationService {
   private async notifyOrganizationOwnerOfJoinRequest(params: {
     ownerId: string;
     organizationId: string;
+    organizationSlug: string;
     organizationName: string;
     requesterId: string;
     requesterById: ReadonlyMap<string, OrganizationOwnerResponse>;
@@ -793,6 +991,7 @@ export class OrganizationService {
       volunteerName,
       reportTitle: params.organizationName,
       organizationId: params.organizationId,
+      organizationSlug: params.organizationSlug,
     });
   }
 
@@ -949,6 +1148,17 @@ export class OrganizationService {
           },
         }),
       ]);
+      void enqueueVolunteerApprovedWebsiteNotification({
+        userId: request.requesterId,
+        reportTitle: request.organization.name,
+        organizationId: request.organizationId,
+        organizationSlug: request.organization.slug ?? undefined,
+      }).catch((err) => {
+        console.warn(
+          "[organization] failed to notify requester of join approval",
+          err,
+        );
+      });
     } else {
       await organizationJoiningRequestRepository.updateStatus(
         requestId,

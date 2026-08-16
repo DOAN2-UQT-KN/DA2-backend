@@ -27,6 +27,12 @@ import { verifyAndConsumeOrganizationContactEmailToken } from "./identity-organi
 import { organizationService } from "./organization.service";
 
 const orgIdParam = param("id").isUUID().withMessage("id must be a valid UUID");
+const orgSlugParam = param("slug")
+  .trim()
+  .notEmpty()
+  .isLength({ max: 220 })
+  .matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  .withMessage("slug must be a URL-friendly lowercase identifier");
 
 function parseOrganizationListEmailVerifiedQuery(
   req: Request,
@@ -274,11 +280,11 @@ export class OrganizationController {
       }
 
       try {
-        await organizationService.confirmOrganizationContactEmail(
+        const verified = await organizationService.confirmOrganizationContactEmail(
           organizationId,
           email,
         );
-        res.redirect(302, redirectAfterContactEmailVerified(organizationId));
+        res.redirect(302, redirectAfterContactEmailVerified(verified.slug));
       } catch (e) {
         if (HttpError.isHttpError(e)) {
           const status = e.statusResponse.status;
@@ -375,8 +381,9 @@ export class OrganizationController {
   ];
 
   /**
-   * Approve or reject an organization (admin only) via body `status`:
-   * `GlobalStatus._STATUS_ACTIVE` (1) to approve, `_STATUS_INACTIVE` (2) to reject.
+   * Approve or ban an organization (admin only) via body `status`:
+   * `GlobalStatus._STATUS_ACTIVE` (1) to verify, `_STATUS_INACTIVE` (2) to ban.
+   * Ban requires `reject_reason`; verify may omit it (clears any previous reason).
    */
   adminVerifyOrganization = [
     orgIdParam,
@@ -385,8 +392,33 @@ export class OrganizationController {
       .toInt()
       .isIn([GlobalStatus._STATUS_ACTIVE, GlobalStatus._STATUS_INACTIVE])
       .withMessage(
-        "status must be 1 (approved) to approve or 2 (rejected) to reject",
+        "status must be 1 (active) to verify or 2 (inactive) to ban",
       ),
+    body("rejectReason").custom((value, { req }) => {
+      const status = Number(req.body.status);
+      const isBan = status === GlobalStatus._STATUS_INACTIVE;
+      if (value === undefined || value === null) {
+        if (isBan) {
+          throw new Error(
+            "reject_reason is required when banning an organization",
+          );
+        }
+        return true;
+      }
+      if (typeof value !== "string") {
+        throw new Error("reject_reason must be a string or null");
+      }
+      const trimmed = value.trim();
+      if (isBan && !trimmed) {
+        throw new Error(
+          "reject_reason is required when banning an organization",
+        );
+      }
+      if (trimmed.length > 5000) {
+        throw new Error("reject_reason too long (max 5000 characters)");
+      }
+      return true;
+    }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -412,18 +444,19 @@ export class OrganizationController {
         );
       }
 
-      const { status } = req.body as AdminVerifyOrganizationBody;
+      const { status, rejectReason } = req.body as AdminVerifyOrganizationBody;
 
       try {
         const organization = await organizationService.adminVerifyOrganization(
           req.params.id,
           userId,
           status,
+          rejectReason,
         );
         const message =
           status === GlobalStatus._STATUS_ACTIVE
-            ? "Organization approved successfully"
-            : "Organization rejected successfully";
+            ? "Organization verified successfully"
+            : "Organization banned successfully";
         return sendSuccess(res, HTTP_STATUS.OK.withMessage(message), {
           organization,
         });
@@ -594,6 +627,42 @@ export class OrganizationController {
         );
         if (!organization) {
           return sendError(res, HTTP_STATUS.NOT_FOUND);
+        }
+        return sendSuccess(res, HTTP_STATUS.OK, { organization });
+      } catch (error) {
+        if (sendHttpErrorResponse(res, error)) {
+          return;
+        }
+        throw error;
+      }
+    },
+  ];
+
+  getOrganizationBySlug = [
+    orgSlugParam,
+
+    async (req: Request, res: Response): Promise<void> => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+          errors: errors.array(),
+        });
+      }
+
+      if (!req.user?.userId) {
+        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+      }
+
+      try {
+        const organization = await organizationService.getBySlug(
+          req.params.slug,
+          req.user.userId,
+        );
+        if (!organization) {
+          return sendError(
+            res,
+            HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
+          );
         }
         return sendSuccess(res, HTTP_STATUS.OK, { organization });
       } catch (error) {

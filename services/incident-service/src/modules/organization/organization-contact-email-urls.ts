@@ -18,9 +18,9 @@ export function frontendBaseUrl(): string {
   );
 }
 
-export function redirectAfterContactEmailVerified(organizationId: string): string {
+export function redirectAfterContactEmailVerified(organizationSlug: string): string {
   // Redirect straight to org detail so the UI can show toast and updated badge.
-  return `${frontendBaseUrl()}/organizations/${organizationId}?verifiedEmail=1`;
+  return `${frontendBaseUrl()}/organizations/${organizationSlug}?verifiedEmail=1`;
 }
 
 export function redirectAfterContactEmailVerifyFailed(

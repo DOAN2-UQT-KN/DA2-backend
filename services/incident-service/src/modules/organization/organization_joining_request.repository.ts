@@ -34,6 +34,7 @@ export class OrganizationJoiningRequestRepository {
           select: {
             id: true,
             name: true,
+            slug: true,
             ownerId: true,
             deletedAt: true,
           },
@@ -147,14 +148,14 @@ export class OrganizationJoiningRequestRepository {
   }
 
   /**
-   * Latest join-request status per organization for this requester (by `updatedAt` desc).
-   * Used to attach `request_status` on organization list responses without N+1 queries.
+   * Latest join-request id + status per organization for this requester (by `updatedAt` desc).
+   * Used to attach `request_status` / `join_request_id` on organization list responses without N+1.
    */
   async findLatestStatusByOrganizationForRequester(
     requesterId: string,
     organizationIds: string[],
-  ): Promise<Map<string, number>> {
-    const map = new Map<string, number>();
+  ): Promise<Map<string, { id: string; status: number }>> {
+    const map = new Map<string, { id: string; status: number }>();
     if (organizationIds.length === 0) {
       return map;
     }
@@ -165,11 +166,11 @@ export class OrganizationJoiningRequestRepository {
         deletedAt: null,
       },
       orderBy: { updatedAt: "desc" },
-      select: { organizationId: true, status: true },
+      select: { id: true, organizationId: true, status: true },
     });
     for (const row of rows) {
       if (!map.has(row.organizationId)) {
-        map.set(row.organizationId, row.status);
+        map.set(row.organizationId, { id: row.id, status: row.status });
       }
     }
     return map;

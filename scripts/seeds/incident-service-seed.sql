@@ -4,11 +4,12 @@
 BEGIN;
 
 -- organizations
-INSERT INTO organizations ("id", "name", "description", "logo_url", "background_url", "contact_email", "is_email_verified", "status", "owner_id", "created_by", "updated_by", "created_at", "updated_at", "deleted_at")
+INSERT INTO organizations ("id", "name", "slug", "description", "logo_url", "background_url", "contact_email", "is_email_verified", "status", "owner_id", "created_by", "updated_by", "created_at", "updated_at", "deleted_at")
 VALUES
   (
     '44444444-4444-4444-a444-444444444401',
     'Eco Volunteers',
+    'eco-volunteers',
     'Seeded organization for integration testing',
     'https://example.com/logo.png',
     'https://example.com/bg.png',

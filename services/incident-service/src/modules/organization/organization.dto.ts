@@ -14,11 +14,16 @@ export interface CreateOrganizationBody {
 
 /**
  * Body for PUT /api/v1/organizations/:id/verify (admin).
- * `GlobalStatus._STATUS_ACTIVE` (1) approves; `_STATUS_INACTIVE` (2) rejects (draft / awaiting review only).
+ * `GlobalStatus._STATUS_ACTIVE` (1) verifies; `_STATUS_INACTIVE` (2) bans.
  */
 export interface AdminVerifyOrganizationBody {
-  /** `GlobalStatus`: use `_STATUS_ACTIVE` (1) to approve, `_STATUS_INACTIVE` (2) to reject. */
+  /** `GlobalStatus`: use `_STATUS_ACTIVE` (1) to verify, `_STATUS_INACTIVE` (2) to ban. */
   status: number;
+  /**
+   * Required when `status` is `_STATUS_INACTIVE` (ban).
+   * Optional when verifying; omit, `null`, or empty to clear any previous reason.
+   */
+  rejectReason?: string | null;
 }
 
 /** Public owner profile on organization responses (from identity-service; no email). */
@@ -44,6 +49,7 @@ export interface UpdateOrganizationBody {
 export interface OrganizationResponse {
   id: string;
   name: string;
+  slug: string;
   description: string | null;
   descriptionVi?: string | null;
   descriptionEn?: string | null;
@@ -53,18 +59,31 @@ export interface OrganizationResponse {
   isEmailVerified: boolean;
   /** `GlobalStatus` numeric value (e.g. in-review until admin approves via verify endpoint). */
   status: number;
+  /** Admin ban reason; `null` when the organization has not been banned (or reason was cleared). */
+  rejectReason: string | null;
   ownerId: string;
   /** Owner profile from identity-service (name, avatar, bio). */
   owner: OrganizationOwnerResponse;
+  /**
+   * Active member count (owner is not stored in `organization_members` and is not included).
+   * Included on GET /organizations and GET /organizations/my.
+   */
+  members?: number;
   createdAt: Date;
   updatedAt: Date;
   /**
    * For the current user, when their latest non-deleted org join request is pending
    * (`JoinRequestStatus._STATUS_PENDING`) or approved (`JoinRequestStatus._STATUS_APPROVED`).
-   * Included on GET /organizations/:id, GET /organizations, and GET /organizations/my.
+   * Included on GET /organizations/:id, GET /organizations, GET /organizations/by-slug/:slug,
+   * and GET /organizations/my.
    * Omitted if there is no request or the latest is rejected.
    */
   requestStatus?: number;
+  /**
+   * Latest pending join-request id for the current user on this organization.
+   * Included with `requestStatus` when that status is pending, so the client can cancel.
+   */
+  joinRequestId?: string;
   /**
    * For the current user: true when they are an active member of this organization.
    * (Owners are exposed separately via `ownerId`.)

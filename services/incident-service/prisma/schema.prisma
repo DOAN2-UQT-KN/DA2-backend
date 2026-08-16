@@ -549,6 +549,8 @@ model SavedResource {
 model Organization {
   id          String  @id @default(uuid()) @db.Uuid
   name        String  @db.VarChar(200)
+  /** URL-stable identifier generated from `name` on create; not changed on rename. */
+  slug        String  @unique @db.VarChar(220)
   description String?
   descriptionVi String? @map("description_vi")
   descriptionEn String? @map("description_en")
@@ -561,8 +563,10 @@ model Organization {
 
   /** Whether `contactEmail` has been confirmed (e.g. OTP); not set by create body. */
   isEmailVerified Boolean @default(false) @map("is_email_verified")
-  /** Lifecycle: `GlobalStatus._STATUS_PENDING` until admin approves (`ACTIVE`) or rejects (`INACTIVE`). */
+  /** Lifecycle: `GlobalStatus._STATUS_PENDING` until admin verifies (`ACTIVE`) or bans (`INACTIVE`). */
   status Int @default(12)
+  /** Admin-provided reason when the organization is banned; cleared on verify unless sent. */
+  rejectReason String? @map("reject_reason")
 
   ownerId String @map("owner_id") @db.Uuid
 

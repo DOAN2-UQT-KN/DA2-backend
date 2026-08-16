@@ -226,6 +226,7 @@ export async function enqueueVolunteerRequestWebsiteNotification(params: {
   reportTitle: string;
   campaignId?: string;
   organizationId?: string;
+  organizationSlug?: string;
 }): Promise<void> {
   const payload: Record<string, string> = {
     volunteerName: params.volunteerName,
@@ -237,9 +238,88 @@ export async function enqueueVolunteerRequestWebsiteNotification(params: {
   if (params.organizationId) {
     payload.organizationId = params.organizationId;
   }
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
 
   await enqueueWebsiteNotificationsToUsers({
     kind: "VOLUNTEER_REQUEST",
+    userIds: [params.userId],
+    payload,
+  });
+}
+
+/**
+ * In-app: volunteer whose join request was approved (campaign or organization).
+ * Templates use `reportTitle` for the resource name.
+ */
+export async function enqueueVolunteerApprovedWebsiteNotification(params: {
+  userId: string;
+  /** Display name of campaign or organization (template variable `reportTitle`). */
+  reportTitle: string;
+  campaignId?: string;
+  organizationId?: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    reportTitle: params.reportTitle,
+  };
+  if (params.campaignId) {
+    payload.campaignId = params.campaignId;
+  }
+  if (params.organizationId) {
+    payload.organizationId = params.organizationId;
+  }
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "VOLUNTEER_APPROVED",
+    userIds: [params.userId],
+    payload,
+  });
+}
+
+/** In-app: organization owner — admin approved the organization. */
+export async function enqueueOrganizationApprovedWebsiteNotification(params: {
+  userId: string;
+  organizationName: string;
+  organizationId: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    organizationName: params.organizationName,
+    organizationId: params.organizationId,
+  };
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "ORGANIZATION_APPROVED",
+    userIds: [params.userId],
+    payload,
+  });
+}
+
+/** In-app: organization owner — admin banned the organization. */
+export async function enqueueOrganizationRejectedWebsiteNotification(params: {
+  userId: string;
+  organizationName: string;
+  organizationId: string;
+  rejectReason: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    organizationName: params.organizationName,
+    organizationId: params.organizationId,
+    rejectReason: params.rejectReason,
+  };
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "ORGANIZATION_REJECTED",
     userIds: [params.userId],
     payload,
   });

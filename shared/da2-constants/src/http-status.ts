@@ -86,6 +86,12 @@ export const HTTP_STATUS = {
     "REPORT_ALREADY_EXISTS",
   ),
 
+  ORGANIZATION_ALREADY_EXISTS: createStatus(
+    409,
+    "Organization already exists",
+    "ORGANIZATION_ALREADY_EXISTS",
+  ),
+
   TASK_NOT_FOUND: createStatus(404, "Task not found", "TASK_NOT_FOUND"),
   TASK_ALREADY_ASSIGNED: createStatus(
     409,

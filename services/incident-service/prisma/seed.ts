@@ -12,6 +12,7 @@ async function main() {
     create: {
       id: "44444444-4444-4444-a444-444444444401",
       name: "Eco Volunteers",
+      slug: "eco-volunteers",
       description: "Seeded organization for integration testing",
       logoUrl: "https://example.com/logo.png",
       backgroundUrl: "https://example.com/bg.png",

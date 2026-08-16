@@ -11,6 +11,7 @@ export class OrganizationRepository {
 
   async create(data: {
     name: string;
+    slug: string;
     description?: string | null;
     descriptionVi?: string | null;
     descriptionEn?: string | null;
@@ -23,6 +24,7 @@ export class OrganizationRepository {
     return this.prisma.organization.create({
       data: {
         name: data.name,
+        slug: data.slug,
         description: data.description ?? null,
         descriptionVi: data.descriptionVi ?? null,
         descriptionEn: data.descriptionEn ?? null,
@@ -48,6 +50,8 @@ export class OrganizationRepository {
       contactEmail?: string | null;
       status?: number;
       isEmailVerified?: boolean;
+      slug?: string;
+      rejectReason?: string | null;
       updatedBy?: string | null;
     },
   ) {
@@ -75,6 +79,10 @@ export class OrganizationRepository {
         ...(data.isEmailVerified !== undefined && {
           isEmailVerified: data.isEmailVerified,
         }),
+        ...(data.slug !== undefined && { slug: data.slug }),
+        ...(data.rejectReason !== undefined && {
+          rejectReason: data.rejectReason,
+        }),
         ...(data.updatedBy !== undefined && { updatedBy: data.updatedBy }),
       },
     });
@@ -83,6 +91,49 @@ export class OrganizationRepository {
   async findById(id: string) {
     return this.prisma.organization.findFirst({
       where: { id, deletedAt: null },
+    });
+  }
+
+  async findBySlug(slug: string) {
+    return this.prisma.organization.findFirst({
+      where: { slug, deletedAt: null },
+    });
+  }
+
+  /**
+   * Slugs that would collide with `base` or `base-{n}` (includes soft-deleted rows
+   * so a deleted org keeps its public URL reserved).
+   */
+  async findSlugsConflictingWithBase(base: string): Promise<string[]> {
+    const rows = await this.prisma.organization.findMany({
+      where: {
+        OR: [{ slug: base }, { slug: { startsWith: `${base}-` } }],
+      },
+      select: { slug: true },
+    });
+    return rows.map((r) => r.slug);
+  }
+
+  /** Active org with the same name + contact email (name match is case-insensitive). */
+  async findActiveByNameAndContactEmail(
+    name: string,
+    contactEmail: string,
+    excludeId?: string,
+  ) {
+    const trimmedName = name.trim();
+    const normalizedEmail = contactEmail.trim().toLowerCase();
+    if (!trimmedName || !normalizedEmail) {
+      return null;
+    }
+    return this.prisma.organization.findFirst({
+      where: {
+        deletedAt: null,
+        contactEmail: normalizedEmail,
+        name: { equals: trimmedName, mode: "insensitive" },
+        status: { not: GlobalStatus._STATUS_INACTIVE },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
     });
   }
 
@@ -98,6 +149,7 @@ export class OrganizationRepository {
       select: {
         id: true,
         name: true,
+        slug: true,
         logoUrl: true,
         backgroundUrl: true,
         contactEmail: true,
