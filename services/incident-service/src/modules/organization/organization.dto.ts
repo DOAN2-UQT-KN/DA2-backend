@@ -74,10 +74,16 @@ export interface OrganizationResponse {
   /**
    * For the current user, when their latest non-deleted org join request is pending
    * (`JoinRequestStatus._STATUS_PENDING`) or approved (`JoinRequestStatus._STATUS_APPROVED`).
-   * Included on GET /organizations/:id, GET /organizations, and GET /organizations/my.
+   * Included on GET /organizations/:id, GET /organizations, GET /organizations/by-slug/:slug,
+   * and GET /organizations/my.
    * Omitted if there is no request or the latest is rejected.
    */
   requestStatus?: number;
+  /**
+   * Latest pending join-request id for the current user on this organization.
+   * Included with `requestStatus` when that status is pending, so the client can cancel.
+   */
+  joinRequestId?: string;
   /**
    * For the current user: true when they are an active member of this organization.
    * (Owners are exposed separately via `ownerId`.)

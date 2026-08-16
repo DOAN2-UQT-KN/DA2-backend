@@ -666,6 +666,30 @@ export class OrganizationService {
     return undefined;
   }
 
+  private attachViewerJoinState(
+    organization: OrganizationResponse,
+    latest: { id: string; status: number } | undefined,
+    isMember: boolean,
+  ): OrganizationResponse {
+    const requestStatus = this.joinRequestStatusForOrganizationDetail(
+      latest?.status,
+      isMember,
+    );
+    const next: OrganizationResponse = isMember
+      ? { ...organization, isMember }
+      : organization;
+    if (requestStatus === undefined || latest === undefined) {
+      return next;
+    }
+    return {
+      ...next,
+      requestStatus,
+      ...(requestStatus === JoinRequestStatus._STATUS_PENDING
+        ? { joinRequestId: latest.id }
+        : {}),
+    };
+  }
+
   async getById(
     organizationId: string,
     viewerUserId?: string,
@@ -703,16 +727,13 @@ export class OrganizationService {
       row.id,
       viewerUserId,
     );
-    const requestStatus = this.joinRequestStatusForOrganizationDetail(
-      latestJoin?.status,
+    return this.attachViewerJoinState(
+      organization,
+      latestJoin
+        ? { id: latestJoin.id, status: latestJoin.status }
+        : undefined,
       isMember,
     );
-    const withMember: OrganizationResponse = isMember
-      ? { ...organization, isMember }
-      : organization;
-    return requestStatus !== undefined
-      ? { ...withMember, requestStatus }
-      : withMember;
   }
 
   private async organizationIdsForJoinRequestStatusFilter(
@@ -740,19 +761,18 @@ export class OrganizationService {
         viewerUserId,
         organizations.map((o) => o.id),
       );
-    const statusByOrgId =
+    const latestByOrgId =
       await organizationJoiningRequestRepository.findLatestStatusByOrganizationForRequester(
         viewerUserId,
         organizations.map((o) => o.id),
       );
     return organizations.map((org) => {
       const isMember = memberOrgIds.has(org.id);
-      const requestStatus = this.joinRequestStatusForOrganizationDetail(
-        statusByOrgId.get(org.id),
+      return this.attachViewerJoinState(
+        org,
+        latestByOrgId.get(org.id),
         isMember,
       );
-      const next: OrganizationResponse = isMember ? { ...org, isMember } : org;
-      return requestStatus !== undefined ? { ...next, requestStatus } : next;
     });
   }
 
