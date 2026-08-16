@@ -51,6 +51,7 @@ export class OrganizationRepository {
       status?: number;
       isEmailVerified?: boolean;
       slug?: string;
+      rejectReason?: string | null;
       updatedBy?: string | null;
     },
   ) {
@@ -79,6 +80,9 @@ export class OrganizationRepository {
           isEmailVerified: data.isEmailVerified,
         }),
         ...(data.slug !== undefined && { slug: data.slug }),
+        ...(data.rejectReason !== undefined && {
+          rejectReason: data.rejectReason,
+        }),
         ...(data.updatedBy !== undefined && { updatedBy: data.updatedBy }),
       },
     });

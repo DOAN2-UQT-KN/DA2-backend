@@ -8,7 +8,10 @@ import { campaignJoiningRequestRepository } from "./campaign_joining_request.rep
 import { campaignAttendanceRepository } from "../campaign_attendance/campaign_attendance.repository";
 import { campaignRepository } from "../campaign.repository";
 import { campaignManagerRepository } from "../campaign_manager/campaign_manager.repository";
-import { enqueueVolunteerRequestWebsiteNotification } from "../notification-jobs.client";
+import {
+  enqueueVolunteerApprovedWebsiteNotification,
+  enqueueVolunteerRequestWebsiteNotification,
+} from "../notification-jobs.client";
 import {
   GlobalStatus,
   JoinRequestStatus,
@@ -280,6 +283,18 @@ export class CampaignJoiningRequestService {
       const profileMap = vid
         ? await fetchOrganizationOwnersByUserIds([vid])
         : new Map<string, OrganizationOwnerResponse>();
+      if (vid) {
+        void enqueueVolunteerApprovedWebsiteNotification({
+          userId: vid,
+          reportTitle: request.campaign?.title?.trim() || "the campaign",
+          campaignId: request.campaignId,
+        }).catch((err) => {
+          console.warn(
+            "[campaign-join-request] failed to notify volunteer of approval",
+            err,
+          );
+        });
+      }
       return {
         type: "approved",
         joinRequest: this.toResponse(updated, profileMap),

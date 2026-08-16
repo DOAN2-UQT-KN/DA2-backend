@@ -16,6 +16,7 @@ import {
 } from "../../constants/status.enum";
 import { HttpError, HTTP_STATUS } from "../../constants/http-status";
 import { organizationRepository } from "../organization/organization.repository";
+import { organizationMemberRepository } from "../organization/organization_member.repository";
 import {
   enqueueCampaignCompletionPendingAdminWebsiteNotification,
   enqueueWebsiteNotificationsToUsers,
@@ -513,7 +514,54 @@ export class CampaignService {
         : []),
     ]);
 
+    void this.notifyOrganizationMembersOfNewCampaign({
+      organizationId: org.id,
+      organizationName: org.name,
+      campaign: created,
+      creatorUserId: userId,
+    }).catch((err) => {
+      console.warn(
+        "[campaign] failed to notify organization members of new campaign",
+        err,
+      );
+    });
+
     return this.toResponseWithVotes(created, viewerUserId ?? userId);
+  }
+
+  /** In-app: approved org members (except the creator) when a new campaign is created. */
+  private async notifyOrganizationMembersOfNewCampaign(args: {
+    organizationId: string;
+    organizationName: string;
+    campaign: {
+      id: string;
+      title: string;
+      titleVi?: string | null;
+      titleEn?: string | null;
+    };
+    creatorUserId: string;
+  }): Promise<void> {
+    const members =
+      await organizationMemberRepository.findAllActiveByOrganization(
+        args.organizationId,
+      );
+    const recipientIds = [
+      ...new Set(members.map((m) => m.userId).filter(Boolean)),
+    ].filter((id) => id !== args.creatorUserId);
+    if (recipientIds.length === 0) {
+      return;
+    }
+
+    await enqueueWebsiteNotificationsToUsers({
+      kind: "CAMPAIGN_CREATED",
+      userIds: recipientIds,
+      payload: {
+        organizationName: args.organizationName,
+        organizationId: args.organizationId,
+        campaignId: args.campaign.id,
+        ...campaignTitleNotificationPayload(args.campaign),
+      },
+    });
   }
 
   /**

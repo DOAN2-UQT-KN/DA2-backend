@@ -383,6 +383,7 @@ export class OrganizationController {
   /**
    * Approve or reject an organization (admin only) via body `status`:
    * `GlobalStatus._STATUS_ACTIVE` (1) to approve, `_STATUS_INACTIVE` (2) to reject.
+   * Reject requires `reject_reason`; approve may omit it (clears any previous reason).
    */
   adminVerifyOrganization = [
     orgIdParam,
@@ -393,6 +394,31 @@ export class OrganizationController {
       .withMessage(
         "status must be 1 (approved) to approve or 2 (rejected) to reject",
       ),
+    body("rejectReason").custom((value, { req }) => {
+      const status = Number(req.body.status);
+      const isReject = status === GlobalStatus._STATUS_INACTIVE;
+      if (value === undefined || value === null) {
+        if (isReject) {
+          throw new Error(
+            "reject_reason is required when rejecting an organization",
+          );
+        }
+        return true;
+      }
+      if (typeof value !== "string") {
+        throw new Error("reject_reason must be a string or null");
+      }
+      const trimmed = value.trim();
+      if (isReject && !trimmed) {
+        throw new Error(
+          "reject_reason is required when rejecting an organization",
+        );
+      }
+      if (trimmed.length > 5000) {
+        throw new Error("reject_reason too long (max 5000 characters)");
+      }
+      return true;
+    }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -418,13 +444,14 @@ export class OrganizationController {
         );
       }
 
-      const { status } = req.body as AdminVerifyOrganizationBody;
+      const { status, rejectReason } = req.body as AdminVerifyOrganizationBody;
 
       try {
         const organization = await organizationService.adminVerifyOrganization(
           req.params.id,
           userId,
           status,
+          rejectReason,
         );
         const message =
           status === GlobalStatus._STATUS_ACTIVE

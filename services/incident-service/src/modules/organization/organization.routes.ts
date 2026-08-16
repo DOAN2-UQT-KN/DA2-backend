@@ -91,7 +91,7 @@ router.get(
  * @route   PUT /api/v1/organizations/:id/verify
  * @desc    Admin approve or reject an organization (`GlobalStatus` in body: approved or rejected).
  * @access  Private (admin)
- * @body    { status } — `1` (`_STATUS_ACTIVE`) to approve, `2` (`_STATUS_INACTIVE`) to reject (draft / awaiting review only).
+ * @body    { status, reject_reason? } — `1` (`_STATUS_ACTIVE`) to approve, `2` (`_STATUS_INACTIVE`) to reject (draft / awaiting review only). `reject_reason` is required when rejecting.
  */
 router.put(
   "/:id/verify",

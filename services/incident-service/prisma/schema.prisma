@@ -565,6 +565,8 @@ model Organization {
   isEmailVerified Boolean @default(false) @map("is_email_verified")
   /** Lifecycle: `GlobalStatus._STATUS_PENDING` until admin approves (`ACTIVE`) or rejects (`INACTIVE`). */
   status Int @default(12)
+  /** Admin-provided reason when the organization is rejected; cleared on approve unless sent. */
+  rejectReason String? @map("reject_reason")
 
   ownerId String @map("owner_id") @db.Uuid
 

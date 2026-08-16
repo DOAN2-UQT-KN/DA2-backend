@@ -25,7 +25,10 @@ import {
   fetchOrganizationOwnersByUserIds,
   getUserProfile,
 } from "./identity-user.client";
-import { enqueueVolunteerRequestWebsiteNotification } from "../campaign/notification-jobs.client";
+import {
+  enqueueVolunteerApprovedWebsiteNotification,
+  enqueueVolunteerRequestWebsiteNotification,
+} from "../campaign/notification-jobs.client";
 import { enqueueOrganizationContactVerificationEmail } from "./organization-contact-email-notify.client";
 import { buildVerifyContactEmailRequestUrl } from "./organization-contact-email-urls";
 import { organizationJoiningRequestRepository } from "./organization_joining_request.repository";
@@ -83,6 +86,7 @@ export class OrganizationService {
       contactEmail: row.contactEmail,
       isEmailVerified: row.isEmailVerified,
       status: row.status,
+      rejectReason: row.rejectReason ?? null,
       ownerId: row.ownerId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -350,11 +354,13 @@ export class OrganizationService {
   /**
    * Admin-only at controller: set organization lifecycle after review
    * (`status` → approved or rejected).
+   * Reject requires a non-empty `rejectReason`. Approve may omit it (clears any previous reason).
    */
   async adminVerifyOrganization(
     organizationId: string,
     adminUserId: string,
     targetStatus: GlobalStatus._STATUS_ACTIVE | GlobalStatus._STATUS_INACTIVE,
+    rejectReason?: string | null,
   ): Promise<OrganizationResponse> {
     const existing = await organizationRepository.findById(organizationId);
     if (!existing) {
@@ -362,6 +368,9 @@ export class OrganizationService {
         HTTP_STATUS.NOT_FOUND.withMessage("Organization not found"),
       );
     }
+
+    const trimmedReason =
+      typeof rejectReason === "string" ? rejectReason.trim() : "";
 
     if (targetStatus === GlobalStatus._STATUS_ACTIVE) {
       if (existing.status === GlobalStatus._STATUS_ACTIVE) {
@@ -381,13 +390,29 @@ export class OrganizationService {
       }
       const updated = await organizationRepository.update(organizationId, {
         status: GlobalStatus._STATUS_ACTIVE,
+        rejectReason: trimmedReason || null,
         updatedBy: adminUserId,
       });
       return this.withOwner(this.organizationCoreFromRow(updated));
     }
 
+    if (!trimmedReason) {
+      throw new HttpError(
+        HTTP_STATUS.VALIDATION_ERROR.withMessage(
+          "reject_reason is required when rejecting an organization",
+        ),
+      );
+    }
+
     if (existing.status === GlobalStatus._STATUS_INACTIVE) {
-      return this.withOwner(this.organizationCoreFromRow(existing));
+      if (existing.rejectReason === trimmedReason) {
+        return this.withOwner(this.organizationCoreFromRow(existing));
+      }
+      const updated = await organizationRepository.update(organizationId, {
+        rejectReason: trimmedReason,
+        updatedBy: adminUserId,
+      });
+      return this.withOwner(this.organizationCoreFromRow(updated));
     }
     if (existing.status === GlobalStatus._STATUS_ACTIVE) {
       throw new HttpError(
@@ -409,6 +434,7 @@ export class OrganizationService {
     }
     const updated = await organizationRepository.update(organizationId, {
       status: GlobalStatus._STATUS_INACTIVE,
+      rejectReason: trimmedReason,
       updatedBy: adminUserId,
     });
     return this.withOwner(this.organizationCoreFromRow(updated));
@@ -1058,6 +1084,17 @@ export class OrganizationService {
           },
         }),
       ]);
+      void enqueueVolunteerApprovedWebsiteNotification({
+        userId: request.requesterId,
+        reportTitle: request.organization.name,
+        organizationId: request.organizationId,
+        organizationSlug: request.organization.slug ?? undefined,
+      }).catch((err) => {
+        console.warn(
+          "[organization] failed to notify requester of join approval",
+          err,
+        );
+      });
     } else {
       await organizationJoiningRequestRepository.updateStatus(
         requestId,

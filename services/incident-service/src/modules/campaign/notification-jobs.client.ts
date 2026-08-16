@@ -248,3 +248,35 @@ export async function enqueueVolunteerRequestWebsiteNotification(params: {
     payload,
   });
 }
+
+/**
+ * In-app: volunteer whose join request was approved (campaign or organization).
+ * Templates use `reportTitle` for the resource name.
+ */
+export async function enqueueVolunteerApprovedWebsiteNotification(params: {
+  userId: string;
+  /** Display name of campaign or organization (template variable `reportTitle`). */
+  reportTitle: string;
+  campaignId?: string;
+  organizationId?: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    reportTitle: params.reportTitle,
+  };
+  if (params.campaignId) {
+    payload.campaignId = params.campaignId;
+  }
+  if (params.organizationId) {
+    payload.organizationId = params.organizationId;
+  }
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "VOLUNTEER_APPROVED",
+    userIds: [params.userId],
+    payload,
+  });
+}

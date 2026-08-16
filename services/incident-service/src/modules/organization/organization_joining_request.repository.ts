@@ -34,6 +34,7 @@ export class OrganizationJoiningRequestRepository {
           select: {
             id: true,
             name: true,
+            slug: true,
             ownerId: true,
             deletedAt: true,
           },

@@ -46,7 +46,19 @@ mountOpenApi(app, {
 });
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin(origin, callback) {
+      const configured = process.env.CORS_ORIGIN?.trim();
+      if (!configured || configured === "*") {
+        callback(null, origin ?? true);
+        return;
+      }
+      const allowed = configured.split(",").map((value) => value.trim());
+      if (!origin || allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked for origin: ${origin}`));
+      }
+    },
     credentials: true,
   }),
 );

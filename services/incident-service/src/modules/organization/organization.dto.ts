@@ -19,6 +19,11 @@ export interface CreateOrganizationBody {
 export interface AdminVerifyOrganizationBody {
   /** `GlobalStatus`: use `_STATUS_ACTIVE` (1) to approve, `_STATUS_INACTIVE` (2) to reject. */
   status: number;
+  /**
+   * Required when `status` is `_STATUS_INACTIVE` (reject).
+   * Optional when approving; omit, `null`, or empty to clear any previous reason.
+   */
+  rejectReason?: string | null;
 }
 
 /** Public owner profile on organization responses (from identity-service; no email). */
@@ -54,6 +59,8 @@ export interface OrganizationResponse {
   isEmailVerified: boolean;
   /** `GlobalStatus` numeric value (e.g. in-review until admin approves via verify endpoint). */
   status: number;
+  /** Admin reject reason; `null` when the organization has not been rejected (or reason was cleared). */
+  rejectReason: string | null;
   ownerId: string;
   /** Owner profile from identity-service (name, avatar, bio). */
   owner: OrganizationOwnerResponse;
