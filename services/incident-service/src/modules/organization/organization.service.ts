@@ -26,6 +26,8 @@ import {
   getUserProfile,
 } from "./identity-user.client";
 import {
+  enqueueOrganizationApprovedWebsiteNotification,
+  enqueueOrganizationRejectedWebsiteNotification,
   enqueueVolunteerApprovedWebsiteNotification,
   enqueueVolunteerRequestWebsiteNotification,
 } from "../campaign/notification-jobs.client";
@@ -353,8 +355,8 @@ export class OrganizationService {
 
   /**
    * Admin-only at controller: set organization lifecycle after review
-   * (`status` → approved or rejected).
-   * Reject requires a non-empty `rejectReason`. Approve may omit it (clears any previous reason).
+   * (`status` → verified/active or banned/inactive).
+   * Ban requires a non-empty `rejectReason`. Verify may omit it (clears any previous reason).
    */
   async adminVerifyOrganization(
     organizationId: string,
@@ -393,13 +395,14 @@ export class OrganizationService {
         rejectReason: trimmedReason || null,
         updatedBy: adminUserId,
       });
+      this.notifyOwnerOfOrganizationVerified(updated, "approved");
       return this.withOwner(this.organizationCoreFromRow(updated));
     }
 
     if (!trimmedReason) {
       throw new HttpError(
         HTTP_STATUS.VALIDATION_ERROR.withMessage(
-          "reject_reason is required when rejecting an organization",
+          "reject_reason is required when banning an organization",
         ),
       );
     }
@@ -414,21 +417,15 @@ export class OrganizationService {
       });
       return this.withOwner(this.organizationCoreFromRow(updated));
     }
-    if (existing.status === GlobalStatus._STATUS_ACTIVE) {
-      throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Cannot reject an organization that is already active",
-        ),
-      );
-    }
-    const canReject =
+    const canBan =
       existing.status === GlobalStatus._STATUS_DRAFT ||
       existing.status === GlobalStatus._STATUS_PENDING ||
-      existing.status === GlobalStatus._STATUS_INREVIEW;
-    if (!canReject) {
+      existing.status === GlobalStatus._STATUS_INREVIEW ||
+      existing.status === GlobalStatus._STATUS_ACTIVE;
+    if (!canBan) {
       throw new HttpError(
         HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Organization can only be rejected while it is in draft or awaiting review",
+          "Organization cannot be banned from its current status",
         ),
       );
     }
@@ -437,7 +434,37 @@ export class OrganizationService {
       rejectReason: trimmedReason,
       updatedBy: adminUserId,
     });
+    this.notifyOwnerOfOrganizationVerified(updated, "banned", trimmedReason);
     return this.withOwner(this.organizationCoreFromRow(updated));
+  }
+
+  /** Best-effort in-app notice to the org owner after admin verify/ban. */
+  private notifyOwnerOfOrganizationVerified(
+    org: Organization,
+    outcome: "approved" | "banned",
+    rejectReason?: string,
+  ): void {
+    const run =
+      outcome === "approved"
+        ? enqueueOrganizationApprovedWebsiteNotification({
+            userId: org.ownerId,
+            organizationName: org.name,
+            organizationId: org.id,
+            organizationSlug: org.slug,
+          })
+        : enqueueOrganizationRejectedWebsiteNotification({
+            userId: org.ownerId,
+            organizationName: org.name,
+            organizationId: org.id,
+            organizationSlug: org.slug,
+            rejectReason: rejectReason ?? "",
+          });
+    void run.catch((err) => {
+      console.warn(
+        `[organization] failed to notify owner of organization ${outcome}`,
+        err,
+      );
+    });
   }
 
   /** Owner-only: partial update; changing `contactEmail` resets verification and queues a new email. */

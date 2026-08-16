@@ -14,14 +14,14 @@ export interface CreateOrganizationBody {
 
 /**
  * Body for PUT /api/v1/organizations/:id/verify (admin).
- * `GlobalStatus._STATUS_ACTIVE` (1) approves; `_STATUS_INACTIVE` (2) rejects (draft / awaiting review only).
+ * `GlobalStatus._STATUS_ACTIVE` (1) verifies; `_STATUS_INACTIVE` (2) bans.
  */
 export interface AdminVerifyOrganizationBody {
-  /** `GlobalStatus`: use `_STATUS_ACTIVE` (1) to approve, `_STATUS_INACTIVE` (2) to reject. */
+  /** `GlobalStatus`: use `_STATUS_ACTIVE` (1) to verify, `_STATUS_INACTIVE` (2) to ban. */
   status: number;
   /**
-   * Required when `status` is `_STATUS_INACTIVE` (reject).
-   * Optional when approving; omit, `null`, or empty to clear any previous reason.
+   * Required when `status` is `_STATUS_INACTIVE` (ban).
+   * Optional when verifying; omit, `null`, or empty to clear any previous reason.
    */
   rejectReason?: string | null;
 }
@@ -59,7 +59,7 @@ export interface OrganizationResponse {
   isEmailVerified: boolean;
   /** `GlobalStatus` numeric value (e.g. in-review until admin approves via verify endpoint). */
   status: number;
-  /** Admin reject reason; `null` when the organization has not been rejected (or reason was cleared). */
+  /** Admin ban reason; `null` when the organization has not been banned (or reason was cleared). */
   rejectReason: string | null;
   ownerId: string;
   /** Owner profile from identity-service (name, avatar, bio). */

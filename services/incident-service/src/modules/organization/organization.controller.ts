@@ -381,9 +381,9 @@ export class OrganizationController {
   ];
 
   /**
-   * Approve or reject an organization (admin only) via body `status`:
-   * `GlobalStatus._STATUS_ACTIVE` (1) to approve, `_STATUS_INACTIVE` (2) to reject.
-   * Reject requires `reject_reason`; approve may omit it (clears any previous reason).
+   * Approve or ban an organization (admin only) via body `status`:
+   * `GlobalStatus._STATUS_ACTIVE` (1) to verify, `_STATUS_INACTIVE` (2) to ban.
+   * Ban requires `reject_reason`; verify may omit it (clears any previous reason).
    */
   adminVerifyOrganization = [
     orgIdParam,
@@ -392,15 +392,15 @@ export class OrganizationController {
       .toInt()
       .isIn([GlobalStatus._STATUS_ACTIVE, GlobalStatus._STATUS_INACTIVE])
       .withMessage(
-        "status must be 1 (approved) to approve or 2 (rejected) to reject",
+        "status must be 1 (active) to verify or 2 (inactive) to ban",
       ),
     body("rejectReason").custom((value, { req }) => {
       const status = Number(req.body.status);
-      const isReject = status === GlobalStatus._STATUS_INACTIVE;
+      const isBan = status === GlobalStatus._STATUS_INACTIVE;
       if (value === undefined || value === null) {
-        if (isReject) {
+        if (isBan) {
           throw new Error(
-            "reject_reason is required when rejecting an organization",
+            "reject_reason is required when banning an organization",
           );
         }
         return true;
@@ -409,9 +409,9 @@ export class OrganizationController {
         throw new Error("reject_reason must be a string or null");
       }
       const trimmed = value.trim();
-      if (isReject && !trimmed) {
+      if (isBan && !trimmed) {
         throw new Error(
-          "reject_reason is required when rejecting an organization",
+          "reject_reason is required when banning an organization",
         );
       }
       if (trimmed.length > 5000) {
@@ -455,8 +455,8 @@ export class OrganizationController {
         );
         const message =
           status === GlobalStatus._STATUS_ACTIVE
-            ? "Organization approved successfully"
-            : "Organization rejected successfully";
+            ? "Organization verified successfully"
+            : "Organization banned successfully";
         return sendSuccess(res, HTTP_STATUS.OK.withMessage(message), {
           organization,
         });

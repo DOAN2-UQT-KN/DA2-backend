@@ -563,9 +563,9 @@ model Organization {
 
   /** Whether `contactEmail` has been confirmed (e.g. OTP); not set by create body. */
   isEmailVerified Boolean @default(false) @map("is_email_verified")
-  /** Lifecycle: `GlobalStatus._STATUS_PENDING` until admin approves (`ACTIVE`) or rejects (`INACTIVE`). */
+  /** Lifecycle: `GlobalStatus._STATUS_PENDING` until admin verifies (`ACTIVE`) or bans (`INACTIVE`). */
   status Int @default(12)
-  /** Admin-provided reason when the organization is rejected; cleared on approve unless sent. */
+  /** Admin-provided reason when the organization is banned; cleared on verify unless sent. */
   rejectReason String? @map("reject_reason")
 
   ownerId String @map("owner_id") @db.Uuid

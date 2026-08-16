@@ -280,3 +280,47 @@ export async function enqueueVolunteerApprovedWebsiteNotification(params: {
     payload,
   });
 }
+
+/** In-app: organization owner — admin approved the organization. */
+export async function enqueueOrganizationApprovedWebsiteNotification(params: {
+  userId: string;
+  organizationName: string;
+  organizationId: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    organizationName: params.organizationName,
+    organizationId: params.organizationId,
+  };
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "ORGANIZATION_APPROVED",
+    userIds: [params.userId],
+    payload,
+  });
+}
+
+/** In-app: organization owner — admin banned the organization. */
+export async function enqueueOrganizationRejectedWebsiteNotification(params: {
+  userId: string;
+  organizationName: string;
+  organizationId: string;
+  rejectReason: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    organizationName: params.organizationName,
+    organizationId: params.organizationId,
+    rejectReason: params.rejectReason,
+  };
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "ORGANIZATION_REJECTED",
+    userIds: [params.userId],
+    payload,
+  });
+}
