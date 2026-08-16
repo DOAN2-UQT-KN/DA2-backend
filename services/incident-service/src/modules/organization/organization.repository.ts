@@ -130,6 +130,7 @@ export class OrganizationRepository {
         deletedAt: null,
         contactEmail: normalizedEmail,
         name: { equals: trimmedName, mode: "insensitive" },
+        status: { not: GlobalStatus._STATUS_INACTIVE },
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
       select: { id: true },
