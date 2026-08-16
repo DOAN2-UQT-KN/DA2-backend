@@ -680,7 +680,7 @@ export class OrganizationService {
     viewerUserId?: string,
   ): Promise<OrganizationResponse | null> {
     const row = await organizationRepository.findBySlug(slug);
-    if (!row) return null;
+    if (!row || row.status === GlobalStatus._STATUS_INACTIVE) return null;
     return this.hydrateOrganizationForViewer(row, viewerUserId);
   }
 
