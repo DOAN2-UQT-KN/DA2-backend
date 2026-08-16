@@ -756,6 +756,22 @@ export class OrganizationService {
     });
   }
 
+  private async withMemberCounts(
+    organizations: OrganizationResponse[],
+  ): Promise<OrganizationResponse[]> {
+    if (organizations.length === 0) {
+      return organizations;
+    }
+    const counts =
+      await organizationMemberRepository.countActiveByOrganizationIds(
+        organizations.map((o) => o.id),
+      );
+    return organizations.map((org) => ({
+      ...org,
+      members: counts.get(org.id) ?? 0,
+    }));
+  }
+
   async listMyOrganizations(
     userId: string,
     query: MyOrganizationsListQuery,
@@ -804,9 +820,8 @@ export class OrganizationService {
       rows.map((r) => this.organizationCoreFromRow(r)),
     );
     return {
-      organizations: await this.withOrganizationListRequestStatus(
-        organizations,
-        userId,
+      organizations: await this.withMemberCounts(
+        await this.withOrganizationListRequestStatus(organizations, userId),
       ),
       total,
       page,
@@ -860,9 +875,11 @@ export class OrganizationService {
       rows.map((r) => this.organizationCoreFromRow(r)),
     );
     return {
-      organizations: await this.withOrganizationListRequestStatus(
-        organizations,
-        viewerUserId,
+      organizations: await this.withMemberCounts(
+        await this.withOrganizationListRequestStatus(
+          organizations,
+          viewerUserId,
+        ),
       ),
       total,
       page,

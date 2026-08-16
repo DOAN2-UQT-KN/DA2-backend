@@ -64,6 +64,11 @@ export interface OrganizationResponse {
   ownerId: string;
   /** Owner profile from identity-service (name, avatar, bio). */
   owner: OrganizationOwnerResponse;
+  /**
+   * Active member count (owner is not stored in `organization_members` and is not included).
+   * Included on GET /organizations and GET /organizations/my.
+   */
+  members?: number;
   createdAt: Date;
   updatedAt: Date;
   /**

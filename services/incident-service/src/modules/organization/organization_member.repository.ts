@@ -48,6 +48,28 @@ export class OrganizationMemberRepository {
     return new Set(rows.map((r) => r.organizationId));
   }
 
+  /** Active member counts per org; orgs with zero members are omitted. */
+  async countActiveByOrganizationIds(
+    organizationIds: string[],
+  ): Promise<Map<string, number>> {
+    if (organizationIds.length === 0) {
+      return new Map();
+    }
+    const groups = await this.prisma.organizationMember.groupBy({
+      by: ["organizationId"],
+      where: {
+        organizationId: { in: organizationIds },
+        deletedAt: null,
+      },
+      _count: { _all: true },
+    });
+    const out = new Map<string, number>();
+    for (const g of groups) {
+      out.set(g.organizationId, g._count._all);
+    }
+    return out;
+  }
+
   async findByOrganizationPaginated(
     organizationId: string,
     filters: { userId?: string },
