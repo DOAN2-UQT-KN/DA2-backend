@@ -274,6 +274,7 @@ export class ReportRepository {
                 detail_address as "detailAddress",
                 status,
                 is_verify as "isVerify",
+                reject_reason as "rejectReason",
                 ai_verified as "aiVerified",
                 ai_recommendation as "aiRecommendation",
                 created_at as "createdAt",

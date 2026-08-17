@@ -36,6 +36,12 @@ export interface AddReportImagesRequest {
   imageUrls: string[];
 }
 
+/** Body for PUT /api/v1/reports/:id/ban (admin). */
+export interface AdminBanReportBody {
+  /** Required when banning. */
+  rejectReason: string;
+}
+
 /** One row from GET /api/v1/reports/media-files/by-ids (snake_case in HTTP response). */
 export interface ReportMediaFileByIdResponse {
   id: string;
@@ -90,6 +96,8 @@ export interface ReportResponse {
   status: number | null;
   /** Admin verification; only admins can set true. */
   isVerify: boolean;
+  /** Admin ban reason; `null`/empty when the report has not been banned. */
+  rejectReason: string | null;
   aiVerified: boolean;
   /** LLM recommendation after image/object analysis (nullable until analysis completes). */
   aiRecommendation?: string | null;

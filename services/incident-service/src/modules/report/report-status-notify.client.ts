@@ -14,21 +14,17 @@ function notificationCircuit() {
   return getHttpCircuit(HTTP_CIRCUIT_NOTIFICATION);
 }
 
-/**
- * Enqueues an in-app (website) notification to the report owner when status changes.
- */
-export async function enqueueReportStatusWebsiteNotification(params: {
+async function postReportWebsiteNotification(params: {
+  kind: string;
   userId: string;
-  reportId: string;
-  reportTitle: string;
-  status: string;
+  payload: Record<string, string>;
 }): Promise<void> {
   const baseURL = process.env.NOTIFICATION_SERVICE_URL?.trim();
   const key = process.env.INTERNAL_NOTIFICATION_API_KEY?.trim();
   if (!baseURL || !key) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(
-        "[incident-service] NOTIFICATION_SERVICE_URL or INTERNAL_NOTIFICATION_API_KEY not set; skipping report status notification",
+        "[incident-service] NOTIFICATION_SERVICE_URL or INTERNAL_NOTIFICATION_API_KEY not set; skipping report notification",
       );
     }
     return;
@@ -36,7 +32,7 @@ export async function enqueueReportStatusWebsiteNotification(params: {
 
   const enabled = await filterUserIdsForNotificationKind({
     userIds: [params.userId],
-    kind: "REPORT_STATUS",
+    kind: params.kind,
   });
   if (enabled.length === 0) {
     return;
@@ -53,18 +49,70 @@ export async function enqueueReportStatusWebsiteNotification(params: {
       "/api/v1/notifications/jobs",
       {
         type: "website",
-        kind: "REPORT_STATUS",
+        kind: params.kind,
         userId: params.userId,
-        payload: {
-          reportId: params.reportId,
-          reportTitle: params.reportTitle,
-          status: params.status,
-        },
+        payload: params.payload,
       },
     );
 
     if (!data?.success) {
-      throw new Error("Notification service rejected report status job");
+      throw new Error(
+        `Notification service rejected ${params.kind} job`,
+      );
     }
+  });
+}
+
+/**
+ * Enqueues an in-app (website) notification to the report owner when status changes.
+ */
+export async function enqueueReportStatusWebsiteNotification(params: {
+  userId: string;
+  reportId: string;
+  reportTitle: string;
+  status: string;
+}): Promise<void> {
+  await postReportWebsiteNotification({
+    kind: "REPORT_STATUS",
+    userId: params.userId,
+    payload: {
+      reportId: params.reportId,
+      reportTitle: params.reportTitle,
+      status: params.status,
+    },
+  });
+}
+
+/** In-app: report owner — admin verified the incident. */
+export async function enqueueReportApprovedWebsiteNotification(params: {
+  userId: string;
+  reportId: string;
+  reportTitle: string;
+}): Promise<void> {
+  await postReportWebsiteNotification({
+    kind: "REPORT_APPROVED",
+    userId: params.userId,
+    payload: {
+      reportId: params.reportId,
+      reportTitle: params.reportTitle,
+    },
+  });
+}
+
+/** In-app: report owner — admin banned the incident. */
+export async function enqueueReportRejectedWebsiteNotification(params: {
+  userId: string;
+  reportId: string;
+  reportTitle: string;
+  rejectReason: string;
+}): Promise<void> {
+  await postReportWebsiteNotification({
+    kind: "REPORT_REJECTED",
+    userId: params.userId,
+    payload: {
+      reportId: params.reportId,
+      reportTitle: params.reportTitle,
+      rejectReason: params.rejectReason,
+    },
   });
 }

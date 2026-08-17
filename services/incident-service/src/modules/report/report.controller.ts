@@ -7,7 +7,7 @@ import {
   sendSuccess,
 } from "../../constants/http-status";
 import { reportService } from "./report.service";
-import { ReportSearchQuery, type ReportMediaFileByIdResponse } from "./report.dto";
+import { ReportSearchQuery, type AdminBanReportBody, type ReportMediaFileByIdResponse } from "./report.dto";
 import { normalizeQueryUuidList } from "../../utils/query-uuid-list";
 
 const REPORT_BATCH_QUERY_MAX_IDS = 100;
@@ -496,10 +496,16 @@ export class ReportController {
   ];
 
   /**
-   * Ban a report (admin moderation only)
+   * Ban a report (admin moderation only). Requires `reject_reason`.
    */
   adminBanReport = [
     param("id").isUUID().withMessage("Report ID must be a valid UUID"),
+    body("rejectReason")
+      .isString()
+      .trim()
+      .notEmpty()
+      .isLength({ max: 5000 })
+      .withMessage("reject_reason is required when banning a report"),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -525,9 +531,11 @@ export class ReportController {
           );
         }
 
+        const { rejectReason } = req.body as AdminBanReportBody;
         const report = await reportService.adminBanReport(
           req.params.id,
           userId,
+          rejectReason,
         );
         sendSuccess(
           res,

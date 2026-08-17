@@ -39,7 +39,11 @@ import {
   getUserProfile,
 } from "../organization/identity-user.client";
 import type { OrganizationOwnerResponse } from "../organization/organization.dto";
-import { enqueueReportStatusWebsiteNotification } from "./report-status-notify.client";
+import {
+  enqueueReportApprovedWebsiteNotification,
+  enqueueReportRejectedWebsiteNotification,
+  enqueueReportStatusWebsiteNotification,
+} from "./report-status-notify.client";
 import { emitOutbox } from "../../outbox/outbox.writer";
 import { OutboxEventType } from "../../outbox/outbox.types";
 
@@ -340,6 +344,7 @@ export class ReportService {
   ): Promise<ReportDetailResponse | null> {
     const report = await reportRepository.findByIdWithRelations(id);
     if (!report) return null;
+    if (report.status === REPORT_STATUS_BANNED) return null;
 
     const [details] = await this.reportsWithMediaToDetails([
       report as ReportWithMediaFiles,
@@ -772,23 +777,44 @@ export class ReportService {
 
   /**
    * Ban a report (moderation). Admin-only; sets status to inactive (banned).
+   * `rejectReason` is required. Already-banned reports can update the reason
+   * without a second notification.
    */
   async adminBanReport(
     id: string,
     viewerUserId?: string | null,
+    rejectReason?: string | null,
   ): Promise<ReportResponse> {
     const existing = await reportRepository.findById(id);
     if (!existing) {
       throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
     }
 
+    const trimmedReason =
+      typeof rejectReason === "string" ? rejectReason.trim() : "";
+    if (!trimmedReason) {
+      throw new HttpError(
+        HTTP_STATUS.VALIDATION_ERROR.withMessage(
+          "reject_reason is required when banning a report",
+        ),
+      );
+    }
+
     if (existing.status === REPORT_STATUS_BANNED) {
-      return this.withReportVote(toReportResponse(existing), viewerUserId);
+      if (existing.rejectReason === trimmedReason) {
+        return this.withReportVote(toReportResponse(existing), viewerUserId);
+      }
+      const updated = await reportRepository.update(id, {
+        rejectReason: trimmedReason,
+      });
+      return this.withReportVote(toReportResponse(updated), viewerUserId);
     }
 
     const report = await reportRepository.update(id, {
       status: REPORT_STATUS_BANNED,
+      rejectReason: trimmedReason,
     });
+    this.notifyOwnerOfReportModeration(report, "banned", trimmedReason);
     return this.withReportVote(toReportResponse(report), viewerUserId);
   }
 
@@ -852,8 +878,8 @@ export class ReportService {
   }
 
   /**
-   * Admin approval: marks report verified and sets status pending (eligible for campaigns;
-   * separate from AI `aiVerified`).
+   * Admin approval: marks report verified and sets status TODO (eligible for campaigns;
+   * separate from AI `aiVerified`). Already verified and not banned: no-op.
    */
   async adminVerifyReport(
     id: string,
@@ -864,15 +890,50 @@ export class ReportService {
       throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
     }
 
-    if (existing.isVerify) {
+    if (
+      existing.isVerify &&
+      existing.status !== REPORT_STATUS_BANNED
+    ) {
       return this.withReportVote(toReportResponse(existing), viewerUserId);
     }
 
     const report = await reportRepository.update(id, {
       isVerify: true,
       status: ReportStatus._STATUS_TODO,
+      rejectReason: null,
     });
+    this.notifyOwnerOfReportModeration(report, "approved");
     return this.withReportVote(toReportResponse(report), viewerUserId);
+  }
+
+  /** Best-effort in-app notice to the report owner after admin verify/ban. */
+  private notifyOwnerOfReportModeration(
+    report: { id: string; userId: string | null; title: string | null },
+    outcome: "approved" | "banned",
+    rejectReason?: string,
+  ): void {
+    const ownerId = report.userId;
+    if (!ownerId) return;
+    const reportTitle = report.title?.trim() || "Untitled report";
+    const run =
+      outcome === "approved"
+        ? enqueueReportApprovedWebsiteNotification({
+            userId: ownerId,
+            reportId: report.id,
+            reportTitle,
+          })
+        : enqueueReportRejectedWebsiteNotification({
+            userId: ownerId,
+            reportId: report.id,
+            reportTitle,
+            rejectReason: rejectReason ?? "",
+          });
+    void run.catch((err) => {
+      console.warn(
+        `[report] failed to notify owner of report ${outcome}`,
+        err,
+      );
+    });
   }
 
   private async getMediaUrlMap(
