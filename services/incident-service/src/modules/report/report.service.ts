@@ -8,6 +8,7 @@ import {
   ReportSearchWithScope,
   ReportResponse,
   ReportDetailResponse,
+  ReportHandledByResponse,
   PaginatedReportsResponse,
   ReportBackgroundJobsStatusResponse,
   ReportMediaFileByIdResponse,
@@ -403,6 +404,77 @@ export class ReportService {
     return out;
   }
 
+  private toHandledBy(
+    org:
+      | {
+          id: string;
+          name: string;
+          slug: string;
+          logoUrl: string;
+          backgroundUrl: string | null;
+          contactEmail: string | null;
+          deletedAt: Date | null;
+        }
+      | null
+      | undefined,
+  ): ReportHandledByResponse | null {
+    if (!org || org.deletedAt) {
+      return null;
+    }
+    return {
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      logoUrl: org.logoUrl,
+      backgroundUrl: org.backgroundUrl,
+      contactEmail: org.contactEmail,
+    };
+  }
+
+  private async attachHandledBy(
+    reports: { campaignId: string | null }[],
+    details: ReportDetailResponse[],
+  ): Promise<ReportDetailResponse[]> {
+    const campaignIds = [
+      ...new Set(
+        reports
+          .map((r) => r.campaignId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (campaignIds.length === 0) {
+      return details.map((d) => ({ ...d, handledBy: null }));
+    }
+
+    const campaigns = await prisma.campaign.findMany({
+      where: { id: { in: campaignIds }, deletedAt: null },
+      select: {
+        id: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logoUrl: true,
+            backgroundUrl: true,
+            contactEmail: true,
+            deletedAt: true,
+          },
+        },
+      },
+    });
+
+    const handledByByCampaignId = new Map(
+      campaigns.map((c) => [c.id, this.toHandledBy(c.organization)]),
+    );
+
+    return details.map((d, i) => ({
+      ...d,
+      handledBy:
+        handledByByCampaignId.get(reports[i]?.campaignId ?? "") ?? null,
+    }));
+  }
+
   private toReportDetailFromLoaded(
     report: ReportWithMediaFiles & { distance?: number },
     mediaUrlMap: Map<string, string>,
@@ -418,6 +490,7 @@ export class ReportService {
         uploadedBy: mf.uploadedBy,
         createdAt: mf.createdAt,
       })),
+      handledBy: null,
     };
   }
 
@@ -438,9 +511,10 @@ export class ReportService {
       this.getAiAnalysisUrlMap([...new Set(reportMediaFileIds)]),
     ]);
 
-    return reports.map((r) =>
+    const details = reports.map((r) =>
       this.toReportDetailFromLoaded(r, mediaUrlMap, aiAnalysisUrlMap),
     );
+    return this.attachHandledBy(reports, details);
   }
 
   private async getAiAnalysisUrlMap(

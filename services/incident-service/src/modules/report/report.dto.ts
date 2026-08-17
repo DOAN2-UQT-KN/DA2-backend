@@ -101,8 +101,20 @@ export interface ReportResponse {
   saved: boolean | null;
 }
 
+/** Organization handling the report, via `report.campaignId` → Campaign → Organization. */
+export interface ReportHandledByResponse {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string;
+  backgroundUrl: string | null;
+  contactEmail: string | null;
+}
+
 export interface ReportDetailResponse extends ReportResponse {
   mediaFiles: ReportMediaFileResponse[];
+  /** Null when the report is not linked to a campaign (or campaign/org is deleted). */
+  handledBy: ReportHandledByResponse | null;
 }
 
 export interface ReportMediaFileResponse {
