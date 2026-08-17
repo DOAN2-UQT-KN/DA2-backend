@@ -13,7 +13,7 @@ router.post("/", authenticate, reportController.createReport);
 
 /**
  * @route   GET /api/v1/reports/search
- * @desc    Search and discover reports with filters and sorting
+ * @desc    Search and discover reports with filters and sorting. Optional `statuses` (comma-separated or repeated ints) filters `status IN statuses`.
  * @access  Private
  */
 router.get("/search", authenticate, reportController.searchReports);

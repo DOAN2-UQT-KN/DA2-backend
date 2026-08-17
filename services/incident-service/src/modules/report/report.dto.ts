@@ -48,7 +48,9 @@ export interface ReportMediaFileByIdResponse {
 
 export interface ReportSearchQuery {
   search?: string; // Search in title/description
-  status?: number; // Filter by status
+  status?: number; // Filter by a single status (legacy)
+  /** Filter by any of these statuses (`status IN statuses`). Omit to keep legacy `status` / unfiltered behavior. */
+  statuses?: number[];
   wasteType?: string; // Filter by waste type
   severityLevel?: number; // Filter by severity
   latitude?: number; // User's latitude for distance sorting

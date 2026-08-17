@@ -11,13 +11,34 @@ import { ReportSearchQuery, type ReportMediaFileByIdResponse } from "./report.dt
 import { normalizeQueryUuidList } from "../../utils/query-uuid-list";
 
 const REPORT_BATCH_QUERY_MAX_IDS = 100;
+const REPORT_STATUSES_QUERY_MAX = 25;
+
+/** Repeated keys (`?statuses=21&statuses=22`) or comma-separated (`?statuses=21,22`). */
+function normalizeQueryIntList(value: unknown): number[] {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  const raw = Array.isArray(value)
+    ? value.flatMap((v) => String(v).split(","))
+    : String(value).split(",");
+  return [
+    ...new Set(
+      raw
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map((s) => parseInt(s, 10)),
+    ),
+  ].filter((n) => Number.isInteger(n));
+}
 
 function buildReportSearchQuery(req: Request): ReportSearchQuery {
+  const statuses = normalizeQueryIntList(req.query.statuses);
   return {
     search: req.query.search as string,
     status: req.query.status
       ? parseInt(req.query.status as string, 10)
       : undefined,
+    statuses: statuses.length > 0 ? statuses : undefined,
     wasteType: req.query.wasteType as string,
     severityLevel: req.query.severityLevel
       ? parseInt(req.query.severityLevel as string, 10)
@@ -44,6 +65,29 @@ function buildReportSearchQuery(req: Request): ReportSearchQuery {
 const reportSearchQueryValidators = [
   query("search").optional().trim(),
   query("status").optional().isInt(),
+  query("statuses")
+    .optional()
+    .custom((value) => {
+      if (value === undefined || value === null || value === "") {
+        return true;
+      }
+      const raw = Array.isArray(value)
+        ? value.flatMap((v) => String(v).split(","))
+        : String(value).split(",");
+      const tokens = raw.map((s) => String(s).trim()).filter((s) => s.length > 0);
+      if (tokens.length === 0) {
+        return true;
+      }
+      if (tokens.length > REPORT_STATUSES_QUERY_MAX) {
+        throw new Error(
+          `statuses must contain at most ${REPORT_STATUSES_QUERY_MAX} values`,
+        );
+      }
+      if (!tokens.every((t) => /^-?\d+$/.test(t))) {
+        throw new Error("statuses must be integer(s)");
+      }
+      return true;
+    }),
   query("wasteType").optional().trim(),
   query("severityLevel").optional().isInt({ min: 1, max: 5 }),
   query("latitude").optional().isFloat({ min: -90, max: 90 }),

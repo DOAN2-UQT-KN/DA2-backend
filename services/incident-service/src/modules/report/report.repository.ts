@@ -142,8 +142,10 @@ export class ReportRepository {
       ];
     }
 
-    // Status filter
-    if (query.status) {
+    // Status filter: `statuses` (IN) takes precedence over legacy single `status`
+    if (query.statuses && query.statuses.length > 0) {
+      where.status = { in: query.statuses };
+    } else if (query.status) {
       where.status = query.status;
     }
 
@@ -214,7 +216,14 @@ export class ReportRepository {
       paramIndex++;
     }
 
-    if (query.status) {
+    if (query.statuses && query.statuses.length > 0) {
+      const placeholders = query.statuses
+        .map((_, i) => `$${paramIndex + i}`)
+        .join(", ");
+      conditions.push(`status IN (${placeholders})`);
+      params.push(...query.statuses);
+      paramIndex += query.statuses.length;
+    } else if (query.status) {
       conditions.push(`status = $${paramIndex}`);
       params.push(query.status);
       paramIndex++;
