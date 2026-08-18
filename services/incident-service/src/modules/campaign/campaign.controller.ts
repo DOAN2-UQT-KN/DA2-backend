@@ -11,8 +11,9 @@ import { campaignManagerService } from "./campaign_manager/campaign_manager.serv
 import { campaignTaskService } from "./campaign_task/campaign_task.service";
 import { campaignJoiningRequestService } from "./campaign_joining_request/campaign_joining_request.service";
 import { campaignAttendanceService } from "./campaign_attendance/campaign_attendance.service";
-import { JoinRequestStatus } from "../../constants/status.enum";
+import { GlobalStatus, JoinRequestStatus } from "../../constants/status.enum";
 import type {
+  AdminVerifyCampaignBody,
   CampaignListQuery,
   CampaignManagersListQuery,
   CampaignMultiSubmissionReviewListQuery,
@@ -393,10 +394,44 @@ export class CampaignController {
   ];
 
   /**
-   * Verify a campaign (admin only).
+   * Approve or ban a campaign (admin only) via body `status`:
+   * `GlobalStatus._STATUS_ACTIVE` (1) to verify, `_STATUS_INACTIVE` (2) to ban.
+   * Ban requires `reject_reason`; verify may omit it (clears any previous reason).
    */
   adminVerifyCampaign = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
+    body("status")
+      .isInt()
+      .toInt()
+      .isIn([GlobalStatus._STATUS_ACTIVE, GlobalStatus._STATUS_INACTIVE])
+      .withMessage(
+        "status must be 1 (active) to verify or 2 (inactive) to ban",
+      ),
+    body("rejectReason").custom((value, { req }) => {
+      const status = Number(req.body.status);
+      const isBan = status === GlobalStatus._STATUS_INACTIVE;
+      if (value === undefined || value === null) {
+        if (isBan) {
+          throw new Error(
+            "reject_reason is required when banning a campaign",
+          );
+        }
+        return true;
+      }
+      if (typeof value !== "string") {
+        throw new Error("reject_reason must be a string or null");
+      }
+      const trimmed = value.trim();
+      if (isBan && !trimmed) {
+        throw new Error(
+          "reject_reason is required when banning a campaign",
+        );
+      }
+      if (trimmed.length > 5000) {
+        throw new Error("reject_reason too long (max 5000 characters)");
+      }
+      return true;
+    }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -406,55 +441,49 @@ export class CampaignController {
         });
       }
 
+      const userId = req.user?.userId;
+      if (!userId) {
+        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+      }
+
+      const role = req.user?.role;
+      const normalizedRole = role?.toLowerCase();
+      if (!normalizedRole || normalizedRole !== "admin") {
+        return sendError(
+          res,
+          HTTP_STATUS.FORBIDDEN.withMessage(
+            "Only admin can verify a campaign",
+          ),
+        );
+      }
+
+      const { status, rejectReason } = req.body as AdminVerifyCampaignBody;
+
       try {
-        const userId = req.user?.userId;
-        if (!userId) {
-          return sendError(res, HTTP_STATUS.UNAUTHORIZED);
-        }
-
-        const role = req.user?.role;
-        const normalizedRole = role?.toLowerCase();
-        if (!normalizedRole || normalizedRole !== "admin") {
-          return sendError(
-            res,
-            HTTP_STATUS.FORBIDDEN.withMessage(
-              "Only admin can verify a campaign",
-            ),
-          );
-        }
-
         const campaign = await campaignService.adminVerifyCampaign(
           req.params.id,
           userId,
+          status,
+          rejectReason,
         );
-        sendSuccess(
-          res,
-          HTTP_STATUS.OK.withMessage("Campaign verified successfully"),
-          { campaign },
-        );
+        const message =
+          status === GlobalStatus._STATUS_ACTIVE
+            ? "Campaign verified successfully"
+            : "Campaign banned successfully";
+        return sendSuccess(res, HTTP_STATUS.OK.withMessage(message), {
+          campaign,
+        });
       } catch (error) {
-        console.error("Admin verify campaign error:", error);
-        if (error instanceof Error) {
-          if (error.message.includes("not found")) {
-            return sendError(
-              res,
-              HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
-            );
-          }
-          if (error.message.includes("not awaiting initial admin verification")) {
-            return sendError(
-              res,
-              HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
-            );
-          }
+        if (sendHttpErrorResponse(res, error)) {
+          return;
         }
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+        throw error;
       }
     },
   ];
 
   /**
-   * Reject a draft campaign (admin only).
+   * Reject a pending campaign completion (admin only). Draft ban uses PUT /verify.
    */
   adminRejectCampaign = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),

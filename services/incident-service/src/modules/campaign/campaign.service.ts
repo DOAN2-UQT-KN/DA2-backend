@@ -1163,51 +1163,149 @@ export class CampaignService {
     return this.toResponseWithVotes(updated, viewerUserId ?? userId);
   }
 
-  /** Admin-only at controller: first-time approve campaign (pending/draft → active). */
+  /** Admin-only at controller: verify (`ACTIVE`) or ban (`INACTIVE`) a campaign. */
   async adminVerifyCampaign(
     id: string,
     adminUserId: string,
+    targetStatus: GlobalStatus._STATUS_ACTIVE | GlobalStatus._STATUS_INACTIVE,
+    rejectReason?: string | null,
     viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
     const existing = await campaignRepository.findById(id);
     if (!existing) {
-      throw new Error("Campaign not found");
-    }
-
-    if (existing.status === GlobalStatus._STATUS_ACTIVE) {
-      return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
-    }
-
-    const initialApprovalStatuses: number[] = [
-      GlobalStatus._STATUS_PENDING,
-      GlobalStatus._STATUS_DRAFT,
-      GlobalStatus._STATUS_NEW,
-    ];
-    if (!initialApprovalStatuses.includes(existing.status)) {
-      throw new Error(
-        "Campaign is not awaiting initial admin verification",
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
       );
     }
 
-    const updated = await campaignRepository.update(id, {
-      status: GlobalStatus._STATUS_ACTIVE,
-      updatedBy: adminUserId,
-    });
+    const trimmedReason =
+      typeof rejectReason === "string" ? rejectReason.trim() : "";
 
-    void this.notifyNearbyCitizensToJoinApprovedCampaign({
-      campaign: updated,
-      adminUserId,
-    }).catch((err) => {
-      console.warn(
-        "[campaign] failed to notify nearby citizens to join approved campaign",
-        err,
+    if (targetStatus === GlobalStatus._STATUS_ACTIVE) {
+      if (existing.status === GlobalStatus._STATUS_ACTIVE) {
+        return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
+      }
+
+      const canApprove =
+        existing.status === GlobalStatus._STATUS_PENDING ||
+        existing.status === GlobalStatus._STATUS_DRAFT ||
+        existing.status === GlobalStatus._STATUS_NEW ||
+        existing.status === GlobalStatus._STATUS_INACTIVE;
+      if (!canApprove) {
+        throw new HttpError(
+          HTTP_STATUS.BAD_REQUEST.withMessage(
+            "Campaign cannot be approved from its current status",
+          ),
+        );
+      }
+
+      const updated = await campaignRepository.update(id, {
+        status: GlobalStatus._STATUS_ACTIVE,
+        rejectReason: trimmedReason || null,
+        updatedBy: adminUserId,
+      });
+
+      void this.notifyNearbyCitizensToJoinApprovedCampaign({
+        campaign: updated,
+        adminUserId,
+      }).catch((err) => {
+        console.warn(
+          "[campaign] failed to notify nearby citizens to join approved campaign",
+          err,
+        );
+      });
+
+      return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
+    }
+
+    if (!trimmedReason) {
+      throw new HttpError(
+        HTTP_STATUS.VALIDATION_ERROR.withMessage(
+          "reject_reason is required when banning a campaign",
+        ),
       );
-    });
+    }
 
+    if (existing.status === GlobalStatus._STATUS_INACTIVE) {
+      if (existing.rejectReason === trimmedReason) {
+        return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
+      }
+      const updated = await campaignRepository.update(id, {
+        rejectReason: trimmedReason,
+        updatedBy: adminUserId,
+      });
+      return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
+    }
+
+    const canBan =
+      existing.status === GlobalStatus._STATUS_PENDING ||
+      existing.status === GlobalStatus._STATUS_DRAFT ||
+      existing.status === GlobalStatus._STATUS_NEW ||
+      existing.status === GlobalStatus._STATUS_ACTIVE;
+    if (!canBan) {
+      throw new HttpError(
+        HTTP_STATUS.BAD_REQUEST.withMessage(
+          "Campaign cannot be banned from its current status",
+        ),
+      );
+    }
+
+    await this.banCampaignAndUnlinkReports(id, adminUserId, trimmedReason);
+
+    const updated = await campaignRepository.findById(id);
+    if (!updated) {
+      throw new HttpError(
+        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
+      );
+    }
     return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
   }
 
-  /** Admin-only: reject draft campaign — inactive and unlink in-progress reports back to pending; or reject completion submission → in review + notify managers. */
+  private async banCampaignAndUnlinkReports(
+    campaignId: string,
+    adminUserId: string,
+    rejectReason: string,
+  ): Promise<void> {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.report.updateMany({
+          where: {
+            campaignId,
+            deletedAt: null,
+            status: ReportStatus._STATUS_INPROCESS,
+          },
+          data: {
+            campaignId: null,
+            status: ReportStatus._STATUS_TODO,
+            updatedBy: adminUserId,
+          },
+        });
+        await tx.report.updateMany({
+          where: {
+            campaignId,
+            deletedAt: null,
+          },
+          data: {
+            campaignId: null,
+            updatedBy: adminUserId,
+          },
+        });
+        await tx.campaign.update({
+          where: { id: campaignId },
+          data: {
+            status: GlobalStatus._STATUS_INACTIVE,
+            rejectReason,
+            updatedBy: adminUserId,
+          },
+        });
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
+  }
+
+  /** Admin-only: reject completion submission → in review + notify managers. */
   async adminRejectCampaign(
     id: string,
     adminUserId: string,
@@ -1218,10 +1316,6 @@ export class CampaignService {
       throw new HttpError(
         HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
       );
-    }
-
-    if (existing.status === GlobalStatus._STATUS_INACTIVE) {
-      return this.toResponseWithVotes(existing, viewerUserId ?? adminUserId);
     }
 
     if (existing.status === GlobalStatus._STATUS_WAITING_CONFIRMED) {
@@ -1245,69 +1339,11 @@ export class CampaignService {
       return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
     }
 
-    if (
-      existing.status === GlobalStatus._STATUS_ACTIVE ||
-      existing.status === GlobalStatus._STATUS_COMPLETED
-    ) {
-      throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Cannot reject a campaign that is already active or completed",
-        ),
-      );
-    }
-
-    if (existing.status === GlobalStatus._STATUS_INREVIEW) {
-      throw new HttpError(
-        HTTP_STATUS.BAD_REQUEST.withMessage(
-          "Campaign is in review; reject only applies to drafts or to a pending completion approval",
-        ),
-      );
-    }
-
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.report.updateMany({
-          where: {
-            campaignId: id,
-            deletedAt: null,
-            status: ReportStatus._STATUS_INPROCESS,
-          },
-          data: {
-            campaignId: null,
-            status: ReportStatus._STATUS_TODO,
-            updatedBy: adminUserId,
-          },
-        });
-        await tx.report.updateMany({
-          where: {
-            campaignId: id,
-            deletedAt: null,
-          },
-          data: {
-            campaignId: null,
-            updatedBy: adminUserId,
-          },
-        });
-        await tx.campaign.update({
-          where: { id },
-          data: {
-            status: GlobalStatus._STATUS_INACTIVE,
-            updatedBy: adminUserId,
-          },
-        });
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      },
+    throw new HttpError(
+      HTTP_STATUS.BAD_REQUEST.withMessage(
+        "Reject only applies to a pending completion approval",
+      ),
     );
-
-    const updated = await campaignRepository.findById(id);
-    if (!updated) {
-      throw new HttpError(
-        HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
-      );
-    }
-    return this.toResponseWithVotes(updated, viewerUserId ?? adminUserId);
   }
 
   /**

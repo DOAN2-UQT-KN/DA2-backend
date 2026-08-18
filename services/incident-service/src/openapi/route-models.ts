@@ -86,6 +86,7 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
     responseData: "CampaignOneEnvelopeData",
   },
   "PUT /api/v1/campaigns/:id/verify": {
+    requestBody: "AdminVerifyCampaignBody",
     responseData: "CampaignOneEnvelopeData",
   },
   "PUT /api/v1/campaigns/:id": {

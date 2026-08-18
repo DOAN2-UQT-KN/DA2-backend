@@ -134,14 +134,14 @@ router.get("/:id", authenticate, campaignController.getCampaignById);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/reject
- * @desc    Admin reject draft campaign (status → inactive; linked reports return to pending)
+ * @desc    Admin reject pending completion (WAITING_CONFIRMED → INREVIEW)
  * @access  Private (Admin only)
  */
 router.put("/:id/reject", authenticate, campaignController.adminRejectCampaign);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/verify
- * @desc    Admin-approve campaign (status → active, is_verify)
+ * @desc    Admin verify (ACTIVE) or ban (INACTIVE) a campaign; ban requires reject_reason
  * @access  Private (Admin only)
  */
 router.put("/:id/verify", authenticate, campaignController.adminVerifyCampaign);
