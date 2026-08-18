@@ -26,6 +26,7 @@ export const toReportResponse = (
   detailAddress: entity.detailAddress,
   status: entity.status,
   isVerify: entity.isVerify,
+  rejectReason: entity.rejectReason ?? null,
   aiVerified: entity.aiVerified,
   aiRecommendation: entity.aiRecommendation,
   createdAt: entity.createdAt,

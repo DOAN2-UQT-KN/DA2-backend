@@ -36,6 +36,12 @@ export interface AddReportImagesRequest {
   imageUrls: string[];
 }
 
+/** Body for PUT /api/v1/reports/:id/ban (admin). */
+export interface AdminBanReportBody {
+  /** Required when banning. */
+  rejectReason: string;
+}
+
 /** One row from GET /api/v1/reports/media-files/by-ids (snake_case in HTTP response). */
 export interface ReportMediaFileByIdResponse {
   id: string;
@@ -48,7 +54,9 @@ export interface ReportMediaFileByIdResponse {
 
 export interface ReportSearchQuery {
   search?: string; // Search in title/description
-  status?: number; // Filter by status
+  status?: number; // Filter by a single status (legacy)
+  /** Filter by any of these statuses (`status IN statuses`). Omit to keep legacy `status` / unfiltered behavior. */
+  statuses?: number[];
   wasteType?: string; // Filter by waste type
   severityLevel?: number; // Filter by severity
   latitude?: number; // User's latitude for distance sorting
@@ -88,6 +96,8 @@ export interface ReportResponse {
   status: number | null;
   /** Admin verification; only admins can set true. */
   isVerify: boolean;
+  /** Admin ban reason; `null`/empty when the report has not been banned. */
+  rejectReason: string | null;
   aiVerified: boolean;
   /** LLM recommendation after image/object analysis (nullable until analysis completes). */
   aiRecommendation?: string | null;
@@ -101,8 +111,20 @@ export interface ReportResponse {
   saved: boolean | null;
 }
 
+/** Organization handling the report, via `report.campaignId` → Campaign → Organization. */
+export interface ReportHandledByResponse {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string;
+  backgroundUrl: string | null;
+  contactEmail: string | null;
+}
+
 export interface ReportDetailResponse extends ReportResponse {
   mediaFiles: ReportMediaFileResponse[];
+  /** Null when the report is not linked to a campaign (or campaign/org is deleted). */
+  handledBy: ReportHandledByResponse | null;
 }
 
 export interface ReportMediaFileResponse {

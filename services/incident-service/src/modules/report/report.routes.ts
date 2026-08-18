@@ -13,7 +13,7 @@ router.post("/", authenticate, reportController.createReport);
 
 /**
  * @route   GET /api/v1/reports/search
- * @desc    Search and discover reports with filters and sorting
+ * @desc    Search and discover reports with filters and sorting. Optional `statuses` (comma-separated or repeated ints) filters `status IN statuses`.
  * @access  Private
  */
 router.get("/search", authenticate, reportController.searchReports);
@@ -65,7 +65,7 @@ router.get(
 
 /**
  * @route   GET /api/v1/reports/:id
- * @desc    Get report with full details
+ * @desc    Get report with full details. Banned (inactive) reports return 404.
  * @access  Private
  */
 router.get("/:id", authenticate, reportController.getReportDetail);
@@ -104,7 +104,7 @@ router.put("/:id/verify", authenticate, reportController.adminVerifyReport);
 
 /**
  * @route   PUT /api/v1/reports/:id/ban
- * @desc    Ban a report (moderation)
+ * @desc    Ban a report (moderation). Body `{ reject_reason }` is required.
  * @access  Private (Admin only)
  */
 router.put("/:id/ban", authenticate, reportController.adminBanReport);
