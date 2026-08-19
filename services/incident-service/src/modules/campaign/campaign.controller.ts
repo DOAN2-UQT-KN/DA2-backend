@@ -29,6 +29,30 @@ const CAMPAIGN_BATCH_QUERY_MAX_IDS = 100;
 export class CampaignController {
   constructor() {}
 
+  private parseStatusesQuery(raw: unknown): number[] | undefined {
+    if (raw === undefined || raw === null) {
+      return undefined;
+    }
+
+    const source = Array.isArray(raw) ? raw.join(",") : String(raw);
+    const trimmed = source.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    const parsed = trimmed
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .map((value) => Number(value));
+
+    if (parsed.length === 0 || parsed.some((value) => !Number.isInteger(value))) {
+      throw new Error("statuses must be a comma-separated list of integers");
+    }
+
+    return [...new Set(parsed)];
+  }
+
   createCampaign = [
     body("organizationId")
       .isUUID()
@@ -132,6 +156,18 @@ export class CampaignController {
   getCampaigns = [
     query("search").optional().trim(),
     query("status").optional().isInt(),
+    query("statuses")
+      .optional()
+      .custom((value) => {
+        const source = Array.isArray(value) ? value.join(",") : String(value ?? "");
+        if (source.trim().length === 0) return true;
+        return source
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+          .every((item) => /^-?\d+$/.test(item));
+      })
+      .withMessage("statuses must be a comma-separated list of integers"),
     query("createdBy").optional().isUUID(),
     query("managerId").optional().isUUID(),
     query("page").optional().isInt({ min: 1 }),
@@ -170,6 +206,7 @@ export class CampaignController {
             req.query.status !== undefined && req.query.status !== ""
               ? parseInt(String(req.query.status), 10)
               : undefined,
+          statuses: this.parseStatusesQuery(req.query.statuses),
           createdBy: req.query.createdBy
             ? String(req.query.createdBy).trim()
             : undefined,
@@ -236,6 +273,18 @@ export class CampaignController {
   getMyCampaigns = [
     query("search").optional().trim(),
     query("status").optional().isInt(),
+    query("statuses")
+      .optional()
+      .custom((value) => {
+        const source = Array.isArray(value) ? value.join(",") : String(value ?? "");
+        if (source.trim().length === 0) return true;
+        return source
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+          .every((item) => /^-?\d+$/.test(item));
+      })
+      .withMessage("statuses must be a comma-separated list of integers"),
     query("page").optional().isInt({ min: 1 }),
     query("limit").optional().isInt({ min: 1, max: 100 }),
     query("sortBy").optional().isIn(["createdAt", "updatedAt", "title"]),
@@ -278,6 +327,7 @@ export class CampaignController {
             req.query.status !== undefined && req.query.status !== ""
               ? parseInt(String(req.query.status), 10)
               : undefined,
+          statuses: this.parseStatusesQuery(req.query.statuses),
           organizationId: req.query.organizationId
             ? String(req.query.organizationId).trim()
             : undefined,

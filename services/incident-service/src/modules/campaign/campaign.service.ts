@@ -786,6 +786,7 @@ export class CampaignService {
       filters: {
         search: query.search,
         status: query.status,
+        statuses: query.statuses,
         createdBy: query.createdBy,
         managerId: query.managerId,
         organizationId: query.organizationId,

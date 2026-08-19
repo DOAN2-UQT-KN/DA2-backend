@@ -288,6 +288,7 @@ export interface CampaignListQuery {
   lang?: "en" | "vi";
   search?: string;
   status?: number;
+  statuses?: number[];
   createdBy?: string;
   /** Campaigns where this user is an active manager. */
   managerId?: string;

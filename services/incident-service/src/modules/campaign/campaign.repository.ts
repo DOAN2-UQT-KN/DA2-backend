@@ -84,6 +84,7 @@ export class CampaignRepository {
     filters: {
       search?: string;
       status?: number;
+      statuses?: number[];
       createdBy?: string;
       managerId?: string;
       organizationId?: string;
@@ -105,9 +106,11 @@ export class CampaignRepository {
 
     const where: Prisma.CampaignWhereInput = {
       deletedAt: null,
-      ...(filters.status !== undefined && !filters.isOwner
-        ? { status: filters.status }
-        : {}),
+      ...(filters.statuses && filters.statuses.length > 0
+        ? { status: { in: filters.statuses } }
+        : filters.status !== undefined
+          ? { status: filters.status }
+          : {}),
       ...(filters.createdBy ? { createdBy: filters.createdBy } : {}),
       ...(filters.organizationId
         ? { organizationId: filters.organizationId }
@@ -206,7 +209,6 @@ export class CampaignRepository {
             },
           }
         : {}),
-      ...(filters.status ? { status: filters.status } : {}),
     };
 
     const orderBy: Prisma.CampaignOrderByWithRelationInput =
