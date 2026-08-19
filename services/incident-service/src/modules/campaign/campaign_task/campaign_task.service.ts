@@ -71,6 +71,8 @@ export interface UpdateTaskRequest {
 
 export interface CampaignTaskResultResponse {
   description: string;
+  descriptionVi: string | null;
+  descriptionEn: string | null;
   file: string[];
 }
 
@@ -78,7 +80,11 @@ export interface TaskResponse {
   id: string;
   campaignId: string | null;
   title: string | null;
+  titleVi: string | null;
+  titleEn: string | null;
   description: string | null;
+  descriptionVi: string | null;
+  descriptionEn: string | null;
   priority: number;
   status: number;
   scheduledDate: Date | null;
@@ -415,7 +421,11 @@ export class CampaignTaskService {
             id: a.campaignTask.id,
             campaignId: a.campaignTask.campaignId,
             title: a.campaignTask.title,
+            titleVi: a.campaignTask.titleVi,
+            titleEn: a.campaignTask.titleEn,
             description: a.campaignTask.description,
+            descriptionVi: a.campaignTask.descriptionVi,
+            descriptionEn: a.campaignTask.descriptionEn,
             priority: a.campaignTask.priority,
             status: a.campaignTask.status,
             scheduledDate: a.campaignTask.scheduledDate,
@@ -534,16 +544,20 @@ export class CampaignTaskService {
     row:
       | {
           description: string | null;
+          descriptionVi?: string | null;
+          descriptionEn?: string | null;
           files: { media: { url: string } }[];
         }
       | null
       | undefined,
   ): CampaignTaskResultResponse {
     if (!row) {
-      return { description: "", file: [] };
+      return { description: "", descriptionVi: null, descriptionEn: null, file: [] };
     }
     return {
-      description: row.description ?? "",
+      description: row.description ?? row.descriptionVi ?? row.descriptionEn ?? "",
+      descriptionVi: row.descriptionVi ?? null,
+      descriptionEn: row.descriptionEn ?? null,
       file: row.files.map((f) => f.media.url),
     };
   }
@@ -553,7 +567,12 @@ export class CampaignTaskService {
       id: task.id,
       campaignId: task.campaignId,
       title: task.title,
-      description: task.description,
+      titleVi: task.titleVi ?? null,
+      titleEn: task.titleEn ?? null,
+      description:
+        task.description ?? task.descriptionVi ?? task.descriptionEn ?? null,
+      descriptionVi: task.descriptionVi ?? null,
+      descriptionEn: task.descriptionEn ?? null,
       priority: task.priority,
       status: task.status,
       scheduledDate: task.scheduledDate,

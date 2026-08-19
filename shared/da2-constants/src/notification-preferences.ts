@@ -54,6 +54,7 @@ export function notificationKindToPreferenceKey(
       return "campaignCompletionRejected";
     case "VOLUNTEER_REQUEST":
     case "VOLUNTEER_APPROVED":
+    case "VOLUNTEER_REJECTED":
       return "volunteerRequest";
     case "REPORT_STATUS":
     case "REPORT_READY":

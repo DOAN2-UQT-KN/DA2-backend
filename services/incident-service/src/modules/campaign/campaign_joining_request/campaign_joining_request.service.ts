@@ -10,6 +10,7 @@ import { campaignRepository } from "../campaign.repository";
 import { campaignManagerRepository } from "../campaign_manager/campaign_manager.repository";
 import {
   enqueueVolunteerApprovedWebsiteNotification,
+  enqueueVolunteerRejectedWebsiteNotification,
   enqueueVolunteerRequestWebsiteNotification,
 } from "../notification-jobs.client";
 import {
@@ -301,7 +302,20 @@ export class CampaignJoiningRequestService {
       };
     }
 
+    const volunteerId = request.volunteerId;
     await campaignJoiningRequestRepository.softDelete(requestId);
+    if (volunteerId) {
+      void enqueueVolunteerRejectedWebsiteNotification({
+        userId: volunteerId,
+        reportTitle: request.campaign?.title?.trim() || "the campaign",
+        campaignId: request.campaignId,
+      }).catch((err) => {
+        console.warn(
+          "[campaign-join-request] failed to notify volunteer of rejection",
+          err,
+        );
+      });
+    }
     return { type: "rejected", requestId };
   }
 

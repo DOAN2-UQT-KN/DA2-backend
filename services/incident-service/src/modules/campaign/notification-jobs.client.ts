@@ -281,6 +281,38 @@ export async function enqueueVolunteerApprovedWebsiteNotification(params: {
   });
 }
 
+/**
+ * In-app: volunteer whose join request was declined (campaign or organization).
+ * Templates use `reportTitle` for the resource name.
+ */
+export async function enqueueVolunteerRejectedWebsiteNotification(params: {
+  userId: string;
+  /** Display name of campaign or organization (template variable `reportTitle`). */
+  reportTitle: string;
+  campaignId?: string;
+  organizationId?: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    reportTitle: params.reportTitle,
+  };
+  if (params.campaignId) {
+    payload.campaignId = params.campaignId;
+  }
+  if (params.organizationId) {
+    payload.organizationId = params.organizationId;
+  }
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "VOLUNTEER_REJECTED",
+    userIds: [params.userId],
+    payload,
+  });
+}
+
 /** In-app: organization owner — admin approved the organization. */
 export async function enqueueOrganizationApprovedWebsiteNotification(params: {
   userId: string;

@@ -29,6 +29,7 @@ import {
   enqueueOrganizationApprovedWebsiteNotification,
   enqueueOrganizationRejectedWebsiteNotification,
   enqueueVolunteerApprovedWebsiteNotification,
+  enqueueVolunteerRejectedWebsiteNotification,
   enqueueVolunteerRequestWebsiteNotification,
 } from "../campaign/notification-jobs.client";
 import { enqueueOrganizationContactVerificationEmail } from "./organization-contact-email-notify.client";
@@ -1164,6 +1165,17 @@ export class OrganizationService {
         requestId,
         status,
       );
+      void enqueueVolunteerRejectedWebsiteNotification({
+        userId: request.requesterId,
+        reportTitle: request.organization.name,
+        organizationId: request.organizationId,
+        organizationSlug: request.organization.slug ?? undefined,
+      }).catch((err) => {
+        console.warn(
+          "[organization] failed to notify requester of join rejection",
+          err,
+        );
+      });
     }
 
     const updated =
