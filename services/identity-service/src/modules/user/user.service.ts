@@ -5,9 +5,17 @@ import {
     NOTIFICATION_PREFERENCE_KEYS,
     type NotificationPreferences,
 } from '@da2/constants';
+import { AuthTokenType } from '../../constants/auth-token-type';
+import { UserStatus } from '../../constants/user-status';
+import { authTokenRepository } from '../auth/auth_token.repository';
 import { userRepository } from './user.repository';
 import { toUserResponse } from './user.entity';
-import { UpdateUserRequest, UserResponse } from './user.dto';
+import {
+    AdminListUsersQuery,
+    AdminUsersListResult,
+    UpdateUserRequest,
+    UserResponse,
+} from './user.dto';
 
 export class UserService {
     constructor() { }
@@ -183,9 +191,53 @@ export class UserService {
         await userRepository.softDelete(id);
     }
 
-    async getAllUsers(): Promise<UserResponse[]> {
-        const users = await userRepository.findAll();
-        return users.map((u) => toUserResponse(u));
+    async getAllUsers(query: AdminListUsersQuery): Promise<AdminUsersListResult> {
+        const { users, total } = await userRepository.findManyForAdmin(query);
+        return {
+            users: users.map((u) => toUserResponse(u)),
+            total,
+            page: query.page,
+            limit: query.limit,
+        };
+    }
+
+    async adminBanUser(
+        id: string,
+        rejectReason: string,
+        adminUserId: string,
+    ): Promise<UserResponse> {
+        if (id === adminUserId) {
+            throw new Error('Cannot ban yourself');
+        }
+
+        const existing = await userRepository.findById(id);
+        if (!existing) {
+            throw new Error('User not found');
+        }
+
+        const trimmedReason = rejectReason.trim();
+        if (!trimmedReason) {
+            throw new Error('reject_reason is required when banning a user');
+        }
+
+        if (existing.status === UserStatus.INACTIVE) {
+            if (existing.rejectReason === trimmedReason) {
+                return toUserResponse(existing);
+            }
+            const updated = await userRepository.update(id, {
+                rejectReason: trimmedReason,
+            });
+            return toUserResponse(updated);
+        }
+
+        const user = await userRepository.update(id, {
+            status: UserStatus.INACTIVE,
+            rejectReason: trimmedReason,
+        });
+
+        await authTokenRepository.revokeAllForUser(id, AuthTokenType.REFRESH);
+
+        return toUserResponse(user);
     }
 
     /** Internal: user ids with last-known location within radius (meters). */

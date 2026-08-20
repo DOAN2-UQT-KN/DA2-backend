@@ -6,12 +6,16 @@ import {
 // Type-based entity (not class)
 export type UserEntity = User;
 
+export type UserWithRole = UserEntity & {
+    role?: { name: string } | null;
+};
+
 // Import the response type from DTOs
 import { UserResponse } from './user.dto';
 
 // Helper function for conversion (excludes password and sensitive fields)
 export const toUserResponse = (
-    entity: UserEntity,
+    entity: UserWithRole,
     options?: { includeLocation?: boolean },
 ): UserResponse => ({
     id: entity.id,
@@ -23,7 +27,10 @@ export const toUserResponse = (
     gender: (entity.gender as UserResponse['gender']) ?? null,
     dateOfBirth: entity.dateOfBirth ?? null,
     roleId: entity.roleId,
+    roleName: entity.role?.name ?? null,
     emailVerified: entity.emailVerified,
+    status: entity.status,
+    rejectReason: entity.rejectReason ?? null,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
     latitude: options?.includeLocation ? entity.latitude ?? null : null,

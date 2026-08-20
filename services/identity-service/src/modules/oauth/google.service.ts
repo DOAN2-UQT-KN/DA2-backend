@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { AuthTokenType } from "../../constants/auth-token-type";
+import { UserStatus } from "../../constants/user-status";
 import { hashOpaqueToken } from "../../utils/token-hash";
 import { generateTokens, getJwtExpiresAt } from "../../utils/jwt.utils";
 import { authTokenRepository } from "../auth/auth_token.repository";
@@ -57,6 +58,8 @@ export class GoogleOauthService
         emailVerified: Boolean(profile.verified_email),
         verificationToken: null,
       });
+    } else if (user.status === UserStatus.INACTIVE) {
+      throw new Error("ACCOUNT_BANNED");
     } else if (!user.emailVerified && profile.verified_email) {
       user = await userRepository.update(user.id, { emailVerified: true });
     }

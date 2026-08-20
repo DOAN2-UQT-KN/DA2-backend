@@ -8,6 +8,13 @@ export interface UserOneEnvelopeData {
 
 export interface UsersListEnvelopeData {
   users: UserResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AdminBanUserRequest {
+  rejectReason: string;
 }
 
 export interface RoleOneEnvelopeData {

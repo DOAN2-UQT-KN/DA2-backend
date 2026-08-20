@@ -1,7 +1,25 @@
 import { Request, Response } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body, param, query, validationResult } from 'express-validator';
 import { HTTP_STATUS, sendError, sendSuccess } from '../../constants/http-status';
+import { UserStatus } from '../../constants/user-status';
 import { userService } from './user.service';
+import type {
+    AdminBanUserBody,
+    AdminListUsersSortBy,
+    AdminListUsersSortOrder,
+} from './user.dto';
+
+function requireAdmin(req: Request, res: Response): boolean {
+    const role = req.user?.role?.toLowerCase();
+    if (!role || role !== 'admin') {
+        sendError(
+            res,
+            HTTP_STATUS.FORBIDDEN.withMessage('Only admin can perform this action'),
+        );
+        return false;
+    }
+    return true;
+}
 
 export class UserController {
     constructor() { }
@@ -180,15 +198,133 @@ export class UserController {
         }
     };
 
-    getAllUsers = async (_req: Request, res: Response): Promise<void> => {
-        try {
-            const users = await userService.getAllUsers();
-            sendSuccess(res, HTTP_STATUS.OK, { users });
-        } catch (error) {
-            console.error('Get all users error:', error);
-            sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-        }
-    };
+    getAllUsers = [
+        query('search').optional().trim(),
+        query('status')
+            .optional()
+            .isInt()
+            .custom((value) => {
+                const n = Number(value);
+                if (n !== UserStatus.ACTIVE && n !== UserStatus.INACTIVE) {
+                    throw new Error('status must be 1 (active) or 2 (inactive)');
+                }
+                return true;
+            }),
+        query('sort_by')
+            .optional()
+            .isIn(['created_at', 'name', 'email'])
+            .withMessage('sort_by must be created_at, name, or email'),
+        query('sort_order')
+            .optional()
+            .isIn(['asc', 'desc'])
+            .withMessage('sort_order must be asc or desc'),
+        query('page').optional().isInt({ min: 1 }),
+        query('limit').optional().isInt({ min: 1, max: 100 }),
+
+        async (req: Request, res: Response): Promise<void> => {
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+                    errors: errors.array(),
+                });
+            }
+
+            if (!requireAdmin(req, res)) return;
+
+            try {
+                const sortBy = (req.query.sort_by
+                    ? String(req.query.sort_by)
+                    : 'created_at') as AdminListUsersSortBy;
+                const sortOrder = (req.query.sort_order
+                    ? String(req.query.sort_order)
+                    : 'desc') as AdminListUsersSortOrder;
+                const page = req.query.page
+                    ? parseInt(String(req.query.page), 10)
+                    : 1;
+                const limit = req.query.limit
+                    ? parseInt(String(req.query.limit), 10)
+                    : 10;
+
+                const result = await userService.getAllUsers({
+                    search: req.query.search
+                        ? String(req.query.search).trim()
+                        : undefined,
+                    status:
+                        req.query.status !== undefined
+                            ? parseInt(String(req.query.status), 10)
+                            : undefined,
+                    sortBy,
+                    sortOrder,
+                    page,
+                    limit,
+                });
+
+                sendSuccess(res, HTTP_STATUS.OK, result);
+            } catch (error) {
+                console.error('Get all users error:', error);
+                sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            }
+        },
+    ];
+
+    adminBanUser = [
+        param('id').isUUID().withMessage('User ID must be a valid UUID'),
+        body('rejectReason')
+            .isString()
+            .trim()
+            .notEmpty()
+            .isLength({ max: 5000 })
+            .withMessage('reject_reason is required when banning a user'),
+
+        async (req: Request, res: Response): Promise<void> => {
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return sendError(res, HTTP_STATUS.VALIDATION_ERROR, {
+                    errors: errors.array(),
+                });
+            }
+
+            if (!requireAdmin(req, res)) return;
+
+            const adminUserId = req.user?.userId;
+            if (!adminUserId) {
+                return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+            }
+
+            try {
+                const { rejectReason } = req.body as AdminBanUserBody;
+                const user = await userService.adminBanUser(
+                    req.params.id,
+                    rejectReason,
+                    adminUserId,
+                );
+                sendSuccess(
+                    res,
+                    HTTP_STATUS.OK.withMessage('User banned successfully'),
+                    { user },
+                );
+            } catch (error) {
+                console.error('Admin ban user error:', error);
+                if (error instanceof Error && error.message.includes('not found')) {
+                    return sendError(
+                        res,
+                        HTTP_STATUS.NOT_FOUND.withMessage(error.message),
+                    );
+                }
+                if (
+                    error instanceof Error &&
+                    (error.message.includes('Cannot ban yourself') ||
+                        error.message.includes('reject_reason'))
+                ) {
+                    return sendError(
+                        res,
+                        HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
+                    );
+                }
+                sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            }
+        },
+    ];
 }
 
 // Singleton instance

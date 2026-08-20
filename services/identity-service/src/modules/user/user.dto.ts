@@ -28,6 +28,22 @@ export interface UpdateUserRequest {
     notificationPreferences?: Partial<NotificationPreferences>;
 }
 
+export type AdminListUsersSortBy = "created_at" | "name" | "email";
+export type AdminListUsersSortOrder = "asc" | "desc";
+
+export interface AdminListUsersQuery {
+    search?: string;
+    status?: number;
+    sortBy: AdminListUsersSortBy;
+    sortOrder: AdminListUsersSortOrder;
+    page: number;
+    limit: number;
+}
+
+export interface AdminBanUserBody {
+    rejectReason: string;
+}
+
 // Response DTOs (excludes password and sensitive fields)
 export interface UserResponse {
     id: string;
@@ -39,7 +55,11 @@ export interface UserResponse {
     gender: UserGender | null;
     dateOfBirth: Date | null;
     roleId: string;
+    /** Role name when loaded (admin list). */
+    roleName: string | null;
     emailVerified: boolean;
+    status: number;
+    rejectReason: string | null;
     createdAt: Date;
     updatedAt: Date;
     /** Only included when the viewer is this user (or after a self-update). Otherwise null. */
@@ -48,4 +68,11 @@ export interface UserResponse {
     locationUpdatedAt: Date | null;
     detailAddress: string | null;
     notificationPreferences: NotificationPreferences;
+}
+
+export interface AdminUsersListResult {
+    users: UserResponse[];
+    total: number;
+    page: number;
+    limit: number;
 }

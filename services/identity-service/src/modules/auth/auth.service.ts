@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { AuthTokenType } from "../../constants/auth-token-type";
+import { UserStatus } from "../../constants/user-status";
 import {
   generateOpaqueToken,
   hashOpaqueToken,
@@ -95,6 +96,10 @@ export class AuthService {
     const user = await userRepository.findByEmail(request.email);
     if (!user) {
       return null;
+    }
+
+    if (user.status === UserStatus.INACTIVE) {
+      throw new Error("ACCOUNT_BANNED");
     }
 
     const isValid = await bcrypt.compare(request.password, user.password);
