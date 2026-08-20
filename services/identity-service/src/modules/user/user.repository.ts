@@ -49,6 +49,9 @@ export class UserRepository {
     roleId: string;
     avatar: string | null;
     bio: string | null;
+    phoneNumber: string | null;
+    gender: string | null;
+    dateOfBirth: Date | null;
     emailVerified: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -66,6 +69,9 @@ export class UserRepository {
         roleId: true,
         avatar: true,
         bio: true,
+        phoneNumber: true,
+        gender: true,
+        dateOfBirth: true,
         emailVerified: true,
         createdAt: true,
         updatedAt: true,

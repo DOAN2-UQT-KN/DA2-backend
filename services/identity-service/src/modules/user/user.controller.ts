@@ -45,7 +45,15 @@ export class UserController {
 
     updateUser = [
         body('name').optional().trim(),
-        body('avatar').optional().isURL().withMessage('Avatar must be a valid URL'),
+        body('avatar')
+            .optional({ nullable: true })
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (typeof value === 'string' && /^https?:\/\//.test(value)) {
+                    return true;
+                }
+                throw new Error('Avatar must be null or a valid URL');
+            }),
         body('bio').optional().trim(),
         body('roleId').optional().isUUID().withMessage('Role ID must be a valid UUID'),
         body('latitude')
@@ -74,6 +82,48 @@ export class UserController {
             .optional()
             .isBoolean()
             .withMessage('notification preference values must be boolean'),
+        body('phoneNumber')
+            .optional({ nullable: true })
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (typeof value !== 'string') {
+                    throw new Error('phoneNumber must be a string or null');
+                }
+                const trimmed = value.trim();
+                if (!trimmed) return true;
+                if (trimmed.length > 20) {
+                    throw new Error('phoneNumber must be at most 20 characters');
+                }
+                if (!/^[0-9+\s\-().]{7,20}$/.test(trimmed)) {
+                    throw new Error('phoneNumber must be a valid phone number');
+                }
+                return true;
+            }),
+        body('gender')
+            .optional({ nullable: true })
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                const allowed = ['male', 'female', 'other', 'prefer_not_to_say'];
+                if (typeof value === 'string' && allowed.includes(value)) {
+                    return true;
+                }
+                throw new Error(
+                    'gender must be null or one of male, female, other, prefer_not_to_say',
+                );
+            }),
+        body('dateOfBirth')
+            .optional({ nullable: true })
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                    throw new Error('dateOfBirth must be null or YYYY-MM-DD');
+                }
+                const parsed = new Date(`${value}T00:00:00.000Z`);
+                if (Number.isNaN(parsed.getTime())) {
+                    throw new Error('dateOfBirth must be a valid date');
+                }
+                return true;
+            }),
 
         async (req: Request, res: Response): Promise<void> => {
             const errors = validationResult(req);

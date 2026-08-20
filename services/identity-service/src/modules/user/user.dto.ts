@@ -10,11 +10,17 @@ export interface CreateUserRequest {
     roleId: string;
 }
 
+export type UserGender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
+
 export interface UpdateUserRequest {
     name?: string;
-    avatar?: string;
+    avatar?: string | null;
     bio?: string;
     roleId?: string;
+    phoneNumber?: string | null;
+    gender?: UserGender | null;
+    /** ISO date `YYYY-MM-DD`, or `null` to clear. */
+    dateOfBirth?: string | null;
     /** Both required together when updating; use `null` for both to clear stored location. */
     latitude?: number | null;
     longitude?: number | null;
@@ -28,6 +34,9 @@ export interface UserResponse {
     name: string;
     avatar: string | null;
     bio: string | null;
+    phoneNumber: string | null;
+    gender: UserGender | null;
+    dateOfBirth: Date | null;
     roleId: string;
     emailVerified: boolean;
     createdAt: Date;

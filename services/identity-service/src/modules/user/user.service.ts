@@ -110,6 +110,23 @@ export class UserService {
             ...(request.name !== undefined ? { name: request.name } : {}),
             ...(request.avatar !== undefined ? { avatar: request.avatar } : {}),
             ...(request.bio !== undefined ? { bio: request.bio } : {}),
+            ...(request.phoneNumber !== undefined
+                ? {
+                      phoneNumber:
+                          request.phoneNumber === null
+                              ? null
+                              : request.phoneNumber.trim() || null,
+                  }
+                : {}),
+            ...(request.gender !== undefined ? { gender: request.gender } : {}),
+            ...(request.dateOfBirth !== undefined
+                ? {
+                      dateOfBirth:
+                          request.dateOfBirth === null
+                              ? null
+                              : new Date(`${request.dateOfBirth}T00:00:00.000Z`),
+                  }
+                : {}),
             ...(request.roleId !== undefined
                 ? { role: { connect: { id: request.roleId } } }
                 : {}),

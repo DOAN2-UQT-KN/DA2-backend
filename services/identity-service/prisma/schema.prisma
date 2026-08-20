@@ -20,6 +20,11 @@ model User {
   emailVerified     Boolean @default(false)
   verificationToken String?
 
+  phoneNumber String?   @map("phone_number")
+  /// male | female | other | prefer_not_to_say
+  gender      String?
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+
   /// Last known coordinates (WGS84); set via profile update.
   latitude          Float?
   longitude         Float?
