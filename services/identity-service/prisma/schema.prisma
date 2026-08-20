@@ -29,6 +29,7 @@ model User {
   latitude          Float?
   longitude         Float?
   locationUpdatedAt DateTime? @map("location_updated_at")
+  detailAddress     String?   @map("detail_address") @db.VarChar(255)
 
   /// Per-category notification opt-out map (see @da2/constants notification keys).
   notificationPreferences Json @default("{}") @map("notification_preferences")

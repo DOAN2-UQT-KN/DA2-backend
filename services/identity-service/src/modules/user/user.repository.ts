@@ -58,6 +58,7 @@ export class UserRepository {
     latitude: number | null;
     longitude: number | null;
     locationUpdatedAt: Date | null;
+    detailAddress: string | null;
     notificationPreferences: unknown;
   } | null> {
     return this.prisma.user.findFirst({
@@ -78,6 +79,7 @@ export class UserRepository {
         latitude: true,
         longitude: true,
         locationUpdatedAt: true,
+        detailAddress: true,
         notificationPreferences: true,
       },
     });

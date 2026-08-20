@@ -278,6 +278,7 @@ export class AuthService {
       latitude: user.latitude,
       longitude: user.longitude,
       locationUpdatedAt: user.locationUpdatedAt,
+      detailAddress: user.detailAddress ?? null,
       notificationPreferences: mergeNotificationPreferences(
         user.notificationPreferences,
       ),

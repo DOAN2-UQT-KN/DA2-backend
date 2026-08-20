@@ -103,8 +103,9 @@ export interface CurrentUserResponse {
   updatedAt: Date;
   latitude: number | null;
   longitude: number | null;
-    locationUpdatedAt: Date | null;
-    notificationPreferences: NotificationPreferences;
+  locationUpdatedAt: Date | null;
+  detailAddress: string | null;
+  notificationPreferences: NotificationPreferences;
 }
 
 export interface TokenPair {

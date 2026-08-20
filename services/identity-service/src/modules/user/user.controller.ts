@@ -124,6 +124,18 @@ export class UserController {
                 }
                 return true;
             }),
+        body('detailAddress')
+            .optional({ nullable: true })
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (typeof value !== 'string') {
+                    throw new Error('detailAddress must be a string or null');
+                }
+                if (value.trim().length > 255) {
+                    throw new Error('detailAddress must be at most 255 characters');
+                }
+                return true;
+            }),
 
         async (req: Request, res: Response): Promise<void> => {
             const errors = validationResult(req);

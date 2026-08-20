@@ -24,6 +24,7 @@ export interface UpdateUserRequest {
     /** Both required together when updating; use `null` for both to clear stored location. */
     latitude?: number | null;
     longitude?: number | null;
+    detailAddress?: string | null;
     notificationPreferences?: Partial<NotificationPreferences>;
 }
 
@@ -45,5 +46,6 @@ export interface UserResponse {
     latitude: number | null;
     longitude: number | null;
     locationUpdatedAt: Date | null;
+    detailAddress: string | null;
     notificationPreferences: NotificationPreferences;
 }

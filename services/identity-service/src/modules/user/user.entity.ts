@@ -31,6 +31,9 @@ export const toUserResponse = (
     locationUpdatedAt: options?.includeLocation
         ? entity.locationUpdatedAt ?? null
         : null,
+    detailAddress: options?.includeLocation
+        ? entity.detailAddress ?? null
+        : null,
     notificationPreferences: mergeNotificationPreferences(
         entity.notificationPreferences,
     ),

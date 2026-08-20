@@ -69,6 +69,7 @@ export class UserService {
             latitude?: number | null;
             longitude?: number | null;
             locationUpdatedAt?: Date | null;
+            detailAddress?: string | null;
         } = {};
         if (latIn !== undefined && lngIn !== undefined) {
             if (latIn === null && lngIn === null) {
@@ -76,6 +77,7 @@ export class UserService {
                     latitude: null,
                     longitude: null,
                     locationUpdatedAt: null,
+                    detailAddress: null,
                 };
             } else if (
                 typeof latIn === 'number' &&
@@ -125,6 +127,14 @@ export class UserService {
                           request.dateOfBirth === null
                               ? null
                               : new Date(`${request.dateOfBirth}T00:00:00.000Z`),
+                  }
+                : {}),
+            ...(request.detailAddress !== undefined
+                ? {
+                      detailAddress:
+                          request.detailAddress === null
+                              ? null
+                              : request.detailAddress.trim().slice(0, 255) || null,
                   }
                 : {}),
             ...(request.roleId !== undefined
