@@ -6,8 +6,8 @@ const router = Router();
 
 /**
  * @route   GET /api/v1/users
- * @desc    Get all users
- * @access  Private
+ * @desc    List users (admin only; supports search/status/pagination)
+ * @access  Private (admin)
  */
 router.get('/', authenticate, userController.getAllUsers);
 
@@ -24,6 +24,13 @@ router.get('/:id', authenticate, userController.getUserById);
  * @access  Private
  */
 router.get('/email/:email', authenticate, userController.getUserByEmail);
+
+/**
+ * @route   PUT /api/v1/users/:id/ban
+ * @desc    Ban a user (admin only)
+ * @access  Private (admin)
+ */
+router.put('/:id/ban', authenticate, userController.adminBanUser);
 
 /**
  * @route   PUT /api/v1/users/:id

@@ -45,6 +45,10 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
     requestBody: "UpdateUserRequest",
     responseData: "UserOneEnvelopeData",
   },
+  "PUT /api/v1/users/:id/ban": {
+    requestBody: "AdminBanUserRequest",
+    responseData: "UserOneEnvelopeData",
+  },
   "DELETE /api/v1/users/:id": {
     omitData: true,
   },

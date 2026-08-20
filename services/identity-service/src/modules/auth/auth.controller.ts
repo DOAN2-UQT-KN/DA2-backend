@@ -55,6 +55,12 @@ export class AuthController {
 
       sendSuccess(res, HTTP_STATUS.OK, result);
     } catch (error) {
+      if (error instanceof Error && error.message === "ACCOUNT_BANNED") {
+        return sendError(
+          res,
+          HTTP_STATUS.FORBIDDEN.withMessage("Account banned"),
+        );
+      }
       console.error("Google callback error:", error);
       sendError(
         res,
@@ -139,6 +145,13 @@ export class AuthController {
 
         sendSuccess(res, HTTP_STATUS.OK, result);
       } catch (error) {
+        if (error instanceof Error && error.message === "ACCOUNT_BANNED") {
+          logger.warn({ email: req.body?.email }, "login banned account");
+          return sendError(
+            res,
+            HTTP_STATUS.FORBIDDEN.withMessage("Account banned"),
+          );
+        }
         logger.error({ email: req.body?.email, err: error }, "login failed");
         console.error("Login error:", error);
         sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);

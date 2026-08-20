@@ -1,6 +1,16 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import prisma from "../../config/prisma.client";
-import { UserEntity } from "./user.entity";
+import type {
+  AdminListUsersQuery,
+  AdminListUsersSortBy,
+} from "./user.dto";
+import { UserEntity, UserWithRole } from "./user.entity";
+
+const SORT_FIELD_MAP: Record<AdminListUsersSortBy, keyof UserEntity> = {
+  created_at: "createdAt",
+  name: "name",
+  email: "email",
+};
 
 export class UserRepository {
   private prisma: PrismaClient;
@@ -49,12 +59,16 @@ export class UserRepository {
     roleId: string;
     avatar: string | null;
     bio: string | null;
+    phoneNumber: string | null;
+    gender: string | null;
+    dateOfBirth: Date | null;
     emailVerified: boolean;
     createdAt: Date;
     updatedAt: Date;
     latitude: number | null;
     longitude: number | null;
     locationUpdatedAt: Date | null;
+    detailAddress: string | null;
     notificationPreferences: unknown;
   } | null> {
     return this.prisma.user.findFirst({
@@ -66,12 +80,16 @@ export class UserRepository {
         roleId: true,
         avatar: true,
         bio: true,
+        phoneNumber: true,
+        gender: true,
+        dateOfBirth: true,
         emailVerified: true,
         createdAt: true,
         updatedAt: true,
         latitude: true,
         longitude: true,
         locationUpdatedAt: true,
+        detailAddress: true,
         notificationPreferences: true,
       },
     });
@@ -194,6 +212,42 @@ export class UserRepository {
       where: { deletedAt: null },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  async findManyForAdmin(
+    query: AdminListUsersQuery,
+  ): Promise<{ users: UserWithRole[]; total: number }> {
+    const where: Prisma.UserWhereInput = {
+      deletedAt: null,
+    };
+
+    if (query.status !== undefined) {
+      where.status = query.status;
+    }
+
+    const search = query.search?.trim();
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const orderField = SORT_FIELD_MAP[query.sortBy] ?? "createdAt";
+    const skip = (query.page - 1) * query.limit;
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        include: { role: { select: { name: true } } },
+        orderBy: { [orderField]: query.sortOrder },
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return { users, total };
   }
 }
 

@@ -86,6 +86,8 @@ export interface RefreshTokenResponse {
 
 import type { NotificationPreferences } from "@da2/constants";
 
+import type { UserGender } from '../user/user.dto';
+
 export interface CurrentUserResponse {
   id: string;
   email: string;
@@ -93,13 +95,17 @@ export interface CurrentUserResponse {
   roleId: string;
   avatar: string | null;
   bio: string | null;
+  phoneNumber: string | null;
+  gender: UserGender | null;
+  dateOfBirth: Date | null;
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
   latitude: number | null;
   longitude: number | null;
-    locationUpdatedAt: Date | null;
-    notificationPreferences: NotificationPreferences;
+  locationUpdatedAt: Date | null;
+  detailAddress: string | null;
+  notificationPreferences: NotificationPreferences;
 }
 
 export interface TokenPair {

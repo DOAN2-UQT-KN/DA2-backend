@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { AuthTokenType } from "../../constants/auth-token-type";
+import { UserStatus } from "../../constants/user-status";
 import {
   generateOpaqueToken,
   hashOpaqueToken,
@@ -95,6 +96,10 @@ export class AuthService {
     const user = await userRepository.findByEmail(request.email);
     if (!user) {
       return null;
+    }
+
+    if (user.status === UserStatus.INACTIVE) {
+      throw new Error("ACCOUNT_BANNED");
     }
 
     const isValid = await bcrypt.compare(request.password, user.password);
@@ -269,12 +274,16 @@ export class AuthService {
       roleId: user.roleId,
       avatar: user.avatar,
       bio: user.bio,
+      phoneNumber: user.phoneNumber ?? null,
+      gender: (user.gender as CurrentUserResponse['gender']) ?? null,
+      dateOfBirth: user.dateOfBirth ?? null,
       emailVerified: user.emailVerified,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       latitude: user.latitude,
       longitude: user.longitude,
       locationUpdatedAt: user.locationUpdatedAt,
+      detailAddress: user.detailAddress ?? null,
       notificationPreferences: mergeNotificationPreferences(
         user.notificationPreferences,
       ),
