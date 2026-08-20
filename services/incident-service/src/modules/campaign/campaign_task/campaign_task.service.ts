@@ -7,46 +7,6 @@ import { GlobalStatus, TaskStatus } from "../../../constants/status.enum";
 import { HttpError, HTTP_STATUS } from "../../../constants/http-status";
 import prisma from "../../../config/prisma.client";
 
-/** When every task is completed, move an active campaign to in-review for manager / admin completion flow. */
-async function promoteCampaignToInReviewIfEligible(
-  campaignId: string,
-  actorUserId: string,
-): Promise<void> {
-  const campaign = await prisma.campaign.findFirst({
-    where: { id: campaignId, deletedAt: null },
-    select: { id: true, status: true },
-  });
-  if (!campaign || campaign.status !== GlobalStatus._STATUS_ACTIVE) {
-    return;
-  }
-
-  const taskCount = await prisma.campaignTask.count({
-    where: { campaignId, deletedAt: null },
-  });
-  if (taskCount === 0) {
-    return;
-  }
-
-  const incomplete = await prisma.campaignTask.count({
-    where: {
-      campaignId,
-      deletedAt: null,
-      status: { not: GlobalStatus._STATUS_COMPLETED },
-    },
-  });
-  if (incomplete > 0) {
-    return;
-  }
-
-  await prisma.campaign.update({
-    where: { id: campaignId },
-    data: {
-      status: GlobalStatus._STATUS_INREVIEW,
-      updatedBy: actorUserId,
-    },
-  });
-}
-
 export interface CreateTaskRequest {
   campaignId: string;
   title: string;
@@ -71,6 +31,8 @@ export interface UpdateTaskRequest {
 
 export interface CampaignTaskResultResponse {
   description: string;
+  descriptionVi: string | null;
+  descriptionEn: string | null;
   file: string[];
 }
 
@@ -78,7 +40,11 @@ export interface TaskResponse {
   id: string;
   campaignId: string | null;
   title: string | null;
+  titleVi: string | null;
+  titleEn: string | null;
   description: string | null;
+  descriptionVi: string | null;
+  descriptionEn: string | null;
   priority: number;
   status: number;
   scheduledDate: Date | null;
@@ -251,10 +217,6 @@ export class CampaignTaskService {
       scheduledTime: hasTaskFieldUpdate ? request.scheduledTime : undefined,
     });
 
-    if (updated.status === GlobalStatus._STATUS_COMPLETED && task.campaignId) {
-      await promoteCampaignToInReviewIfEligible(task.campaignId, userId);
-    }
-
     return this.toTaskResponse(updated);
   }
 
@@ -415,7 +377,11 @@ export class CampaignTaskService {
             id: a.campaignTask.id,
             campaignId: a.campaignTask.campaignId,
             title: a.campaignTask.title,
+            titleVi: a.campaignTask.titleVi,
+            titleEn: a.campaignTask.titleEn,
             description: a.campaignTask.description,
+            descriptionVi: a.campaignTask.descriptionVi,
+            descriptionEn: a.campaignTask.descriptionEn,
             priority: a.campaignTask.priority,
             status: a.campaignTask.status,
             scheduledDate: a.campaignTask.scheduledDate,
@@ -521,12 +487,6 @@ export class CampaignTaskService {
     }
 
     const updated = await campaignTaskRepository.update(taskId, { status });
-    if (
-      updated.status === GlobalStatus._STATUS_COMPLETED &&
-      task.campaignId
-    ) {
-      await promoteCampaignToInReviewIfEligible(task.campaignId, volunteerId);
-    }
     return this.toTaskResponse(updated);
   }
 
@@ -534,16 +494,20 @@ export class CampaignTaskService {
     row:
       | {
           description: string | null;
+          descriptionVi?: string | null;
+          descriptionEn?: string | null;
           files: { media: { url: string } }[];
         }
       | null
       | undefined,
   ): CampaignTaskResultResponse {
     if (!row) {
-      return { description: "", file: [] };
+      return { description: "", descriptionVi: null, descriptionEn: null, file: [] };
     }
     return {
-      description: row.description ?? "",
+      description: row.description ?? row.descriptionVi ?? row.descriptionEn ?? "",
+      descriptionVi: row.descriptionVi ?? null,
+      descriptionEn: row.descriptionEn ?? null,
       file: row.files.map((f) => f.media.url),
     };
   }
@@ -553,7 +517,12 @@ export class CampaignTaskService {
       id: task.id,
       campaignId: task.campaignId,
       title: task.title,
-      description: task.description,
+      titleVi: task.titleVi ?? null,
+      titleEn: task.titleEn ?? null,
+      description:
+        task.description ?? task.descriptionVi ?? task.descriptionEn ?? null,
+      descriptionVi: task.descriptionVi ?? null,
+      descriptionEn: task.descriptionEn ?? null,
       priority: task.priority,
       status: task.status,
       scheduledDate: task.scheduledDate,

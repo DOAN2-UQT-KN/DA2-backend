@@ -11,8 +11,10 @@ import { campaignManagerService } from "./campaign_manager/campaign_manager.serv
 import { campaignTaskService } from "./campaign_task/campaign_task.service";
 import { campaignJoiningRequestService } from "./campaign_joining_request/campaign_joining_request.service";
 import { campaignAttendanceService } from "./campaign_attendance/campaign_attendance.service";
-import { JoinRequestStatus } from "../../constants/status.enum";
+import { GlobalStatus, JoinRequestStatus } from "../../constants/status.enum";
 import type {
+  AdminCompletionReviewBody,
+  AdminVerifyCampaignBody,
   CampaignListQuery,
   CampaignManagersListQuery,
   CampaignMultiSubmissionReviewListQuery,
@@ -27,6 +29,30 @@ const CAMPAIGN_BATCH_QUERY_MAX_IDS = 100;
 
 export class CampaignController {
   constructor() {}
+
+  private parseStatusesQuery(raw: unknown): number[] | undefined {
+    if (raw === undefined || raw === null) {
+      return undefined;
+    }
+
+    const source = Array.isArray(raw) ? raw.join(",") : String(raw);
+    const trimmed = source.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    const parsed = trimmed
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .map((value) => Number(value));
+
+    if (parsed.length === 0 || parsed.some((value) => !Number.isInteger(value))) {
+      throw new Error("statuses must be a comma-separated list of integers");
+    }
+
+    return [...new Set(parsed)];
+  }
 
   createCampaign = [
     body("organizationId")
@@ -131,6 +157,18 @@ export class CampaignController {
   getCampaigns = [
     query("search").optional().trim(),
     query("status").optional().isInt(),
+    query("statuses")
+      .optional()
+      .custom((value) => {
+        const source = Array.isArray(value) ? value.join(",") : String(value ?? "");
+        if (source.trim().length === 0) return true;
+        return source
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+          .every((item) => /^-?\d+$/.test(item));
+      })
+      .withMessage("statuses must be a comma-separated list of integers"),
     query("createdBy").optional().isUUID(),
     query("managerId").optional().isUUID(),
     query("page").optional().isInt({ min: 1 }),
@@ -169,6 +207,7 @@ export class CampaignController {
             req.query.status !== undefined && req.query.status !== ""
               ? parseInt(String(req.query.status), 10)
               : undefined,
+          statuses: this.parseStatusesQuery(req.query.statuses),
           createdBy: req.query.createdBy
             ? String(req.query.createdBy).trim()
             : undefined,
@@ -235,6 +274,18 @@ export class CampaignController {
   getMyCampaigns = [
     query("search").optional().trim(),
     query("status").optional().isInt(),
+    query("statuses")
+      .optional()
+      .custom((value) => {
+        const source = Array.isArray(value) ? value.join(",") : String(value ?? "");
+        if (source.trim().length === 0) return true;
+        return source
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+          .every((item) => /^-?\d+$/.test(item));
+      })
+      .withMessage("statuses must be a comma-separated list of integers"),
     query("page").optional().isInt({ min: 1 }),
     query("limit").optional().isInt({ min: 1, max: 100 }),
     query("sortBy").optional().isIn(["createdAt", "updatedAt", "title"]),
@@ -277,6 +328,7 @@ export class CampaignController {
             req.query.status !== undefined && req.query.status !== ""
               ? parseInt(String(req.query.status), 10)
               : undefined,
+          statuses: this.parseStatusesQuery(req.query.statuses),
           organizationId: req.query.organizationId
             ? String(req.query.organizationId).trim()
             : undefined,
@@ -393,10 +445,44 @@ export class CampaignController {
   ];
 
   /**
-   * Verify a campaign (admin only).
+   * Approve or ban a campaign (admin only) via body `status`:
+   * `GlobalStatus._STATUS_ACTIVE` (1) to verify, `_STATUS_INACTIVE` (2) to ban.
+   * Ban requires `reject_reason`; verify may omit it (clears any previous reason).
    */
   adminVerifyCampaign = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
+    body("status")
+      .isInt()
+      .toInt()
+      .isIn([GlobalStatus._STATUS_ACTIVE, GlobalStatus._STATUS_INACTIVE])
+      .withMessage(
+        "status must be 1 (active) to verify or 2 (inactive) to ban",
+      ),
+    body("rejectReason").custom((value, { req }) => {
+      const status = Number(req.body.status);
+      const isBan = status === GlobalStatus._STATUS_INACTIVE;
+      if (value === undefined || value === null) {
+        if (isBan) {
+          throw new Error(
+            "reject_reason is required when banning a campaign",
+          );
+        }
+        return true;
+      }
+      if (typeof value !== "string") {
+        throw new Error("reject_reason must be a string or null");
+      }
+      const trimmed = value.trim();
+      if (isBan && !trimmed) {
+        throw new Error(
+          "reject_reason is required when banning a campaign",
+        );
+      }
+      if (trimmed.length > 5000) {
+        throw new Error("reject_reason too long (max 5000 characters)");
+      }
+      return true;
+    }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -406,58 +492,80 @@ export class CampaignController {
         });
       }
 
+      const userId = req.user?.userId;
+      if (!userId) {
+        return sendError(res, HTTP_STATUS.UNAUTHORIZED);
+      }
+
+      const role = req.user?.role;
+      const normalizedRole = role?.toLowerCase();
+      if (!normalizedRole || normalizedRole !== "admin") {
+        return sendError(
+          res,
+          HTTP_STATUS.FORBIDDEN.withMessage(
+            "Only admin can verify a campaign",
+          ),
+        );
+      }
+
+      const { status, rejectReason } = req.body as AdminVerifyCampaignBody;
+
       try {
-        const userId = req.user?.userId;
-        if (!userId) {
-          return sendError(res, HTTP_STATUS.UNAUTHORIZED);
-        }
-
-        const role = req.user?.role;
-        const normalizedRole = role?.toLowerCase();
-        if (!normalizedRole || normalizedRole !== "admin") {
-          return sendError(
-            res,
-            HTTP_STATUS.FORBIDDEN.withMessage(
-              "Only admin can verify a campaign",
-            ),
-          );
-        }
-
         const campaign = await campaignService.adminVerifyCampaign(
           req.params.id,
           userId,
+          status,
+          rejectReason,
         );
-        sendSuccess(
-          res,
-          HTTP_STATUS.OK.withMessage("Campaign verified successfully"),
-          { campaign },
-        );
+        const message =
+          status === GlobalStatus._STATUS_ACTIVE
+            ? "Campaign verified successfully"
+            : "Campaign banned successfully";
+        return sendSuccess(res, HTTP_STATUS.OK.withMessage(message), {
+          campaign,
+        });
       } catch (error) {
-        console.error("Admin verify campaign error:", error);
-        if (error instanceof Error) {
-          if (error.message.includes("not found")) {
-            return sendError(
-              res,
-              HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
-            );
-          }
-          if (error.message.includes("not awaiting initial admin verification")) {
-            return sendError(
-              res,
-              HTTP_STATUS.BAD_REQUEST.withMessage(error.message),
-            );
-          }
+        if (sendHttpErrorResponse(res, error)) {
+          return;
         }
-        sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+        throw error;
       }
     },
   ];
 
   /**
-   * Reject a draft campaign (admin only).
+   * Admin review of a pending campaign completion (approve or reject).
    */
-  adminRejectCampaign = [
+  adminReviewCampaignCompletion = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
+    body("decision")
+      .isIn(["approve", "reject"])
+      .withMessage('decision must be "approve" or "reject"'),
+    body("rejectReason").custom((value, { req }) => {
+      const decision = req.body?.decision;
+      const isReject = decision === "reject";
+      if (value === undefined || value === null) {
+        if (isReject) {
+          throw new Error(
+            "reject_reason is required when rejecting completion",
+          );
+        }
+        return true;
+      }
+      if (typeof value !== "string") {
+        throw new Error("reject_reason must be a string or null");
+      }
+      const trimmed = value.trim();
+      if (isReject && !trimmed) {
+        throw new Error(
+          "reject_reason is required when rejecting completion",
+        );
+      }
+      if (trimmed.length > 5000) {
+        throw new Error("reject_reason too long (max 5000 characters)");
+      }
+      return true;
+    }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -473,29 +581,40 @@ export class CampaignController {
           return sendError(res, HTTP_STATUS.UNAUTHORIZED);
         }
 
-        const role = req.user?.role;
-        const normalizedRole = role?.toLowerCase();
-        if (!normalizedRole || normalizedRole !== "admin") {
+        const role = req.user?.role?.toLowerCase();
+        if (role !== "admin") {
           return sendError(
             res,
             HTTP_STATUS.FORBIDDEN.withMessage(
-              "Only admin can reject a campaign",
+              "Only admin can review campaign completion",
             ),
           );
         }
 
-        const campaign = await campaignService.adminRejectCampaign(
+        const { decision, rejectReason } =
+          req.body as AdminCompletionReviewBody;
+        const trimmedReason =
+          typeof rejectReason === "string" ? rejectReason.trim() : undefined;
+
+        const campaign = await campaignService.adminReviewCampaignCompletion(
           req.params.id,
           userId,
-          req.user?.userId,
+          decision,
+          trimmedReason,
+          userId,
         );
+
         sendSuccess(
           res,
-          HTTP_STATUS.OK.withMessage("Campaign rejected successfully"),
+          HTTP_STATUS.OK.withMessage(
+            decision === "approve"
+              ? "Campaign marked as done successfully"
+              : "Completion request rejected; campaign returned to active",
+          ),
           { campaign },
         );
       } catch (error) {
-        console.error("Admin reject campaign error:", error);
+        console.error("Admin review campaign completion error:", error);
         if (sendHttpErrorResponse(res, error)) {
           return;
         }
@@ -505,6 +624,13 @@ export class CampaignController {
               res,
               HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
             );
+          }
+          if (
+            error.message.includes("must await admin completion") ||
+            error.message.includes("Some tasks is not completed") ||
+            error.message.includes("Reject only applies")
+          ) {
+            return sendError(res, HTTP_STATUS.BAD_REQUEST.withMessage(error.message));
           }
         }
         sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
@@ -573,7 +699,6 @@ export class CampaignController {
 
   /**
    * Manager: submit campaign for final admin completion approval (in review → awaiting admin).
-   * Admin: finalize completion (awaiting admin → completed).
    */
   markCampaignDone = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
@@ -592,26 +717,15 @@ export class CampaignController {
           return sendError(res, HTTP_STATUS.UNAUTHORIZED);
         }
 
-        const role = req.user?.role?.toLowerCase();
-        const isAdmin = role === "admin";
-
-        const campaign = isAdmin
-          ? await campaignService.adminFinalizeCampaignCompletion(
-              req.params.id,
-              userId,
-            )
-          : await campaignService.submitCampaignCompletionForAdminApproval(
-              req.params.id,
-              userId,
-            );
+        const campaign =
+          await campaignService.submitCampaignCompletionForAdminApproval(
+            req.params.id,
+            userId,
+          );
 
         sendSuccess(
           res,
-          HTTP_STATUS.OK.withMessage(
-            isAdmin
-              ? "Campaign marked as done successfully"
-              : "Campaign submitted for admin approval",
-          ),
+          HTTP_STATUS.OK.withMessage("Campaign submitted for admin approval"),
           { campaign },
         );
       } catch (error) {

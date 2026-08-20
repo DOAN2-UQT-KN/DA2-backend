@@ -127,14 +127,32 @@ export async function enqueueCampaignCompletionPendingAdminWebsiteNotification(p
   });
 }
 
-/** In-app: campaign managers — admin rejected the completion request; campaign is back in review. */
+/** In-app: organization owner — admin rejected the completion request; campaign is active again. */
 export async function enqueueCampaignCompletionRejectedByAdminWebsiteNotification(params: {
+  userId: string;
+  campaignTitle: string;
+  campaignId: string;
+  rejectReason: string;
+}): Promise<void> {
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN",
+    userIds: [params.userId],
+    payload: {
+      campaignTitle: params.campaignTitle,
+      campaignId: params.campaignId,
+      rejectReason: params.rejectReason,
+    },
+  });
+}
+
+/** In-app: organization owner — admin approved campaign completion. */
+export async function enqueueCampaignCompletionApprovedByAdminWebsiteNotification(params: {
   userId: string;
   campaignTitle: string;
   campaignId: string;
 }): Promise<void> {
   await enqueueWebsiteNotificationsToUsers({
-    kind: "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN",
+    kind: "CAMPAIGN_COMPLETION_APPROVED_BY_ADMIN",
     userIds: [params.userId],
     payload: {
       campaignTitle: params.campaignTitle,
@@ -276,6 +294,38 @@ export async function enqueueVolunteerApprovedWebsiteNotification(params: {
 
   await enqueueWebsiteNotificationsToUsers({
     kind: "VOLUNTEER_APPROVED",
+    userIds: [params.userId],
+    payload,
+  });
+}
+
+/**
+ * In-app: volunteer whose join request was declined (campaign or organization).
+ * Templates use `reportTitle` for the resource name.
+ */
+export async function enqueueVolunteerRejectedWebsiteNotification(params: {
+  userId: string;
+  /** Display name of campaign or organization (template variable `reportTitle`). */
+  reportTitle: string;
+  campaignId?: string;
+  organizationId?: string;
+  organizationSlug?: string;
+}): Promise<void> {
+  const payload: Record<string, string> = {
+    reportTitle: params.reportTitle,
+  };
+  if (params.campaignId) {
+    payload.campaignId = params.campaignId;
+  }
+  if (params.organizationId) {
+    payload.organizationId = params.organizationId;
+  }
+  if (params.organizationSlug) {
+    payload.organizationSlug = params.organizationSlug;
+  }
+
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "VOLUNTEER_REJECTED",
     userIds: [params.userId],
     payload,
   });

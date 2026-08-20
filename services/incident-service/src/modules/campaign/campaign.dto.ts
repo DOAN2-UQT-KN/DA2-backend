@@ -39,6 +39,27 @@ export interface CreateCampaignRequest {
   reportIds?: string[];
 }
 
+/**
+ * Body for PUT /api/v1/campaigns/:id/verify (admin).
+ * `GlobalStatus._STATUS_ACTIVE` (1) verifies; `_STATUS_INACTIVE` (2) bans.
+ */
+export interface AdminVerifyCampaignBody {
+  /** `GlobalStatus`: use `_STATUS_ACTIVE` (1) to verify, `_STATUS_INACTIVE` (2) to ban. */
+  status: number;
+  /**
+   * Required when `status` is `_STATUS_INACTIVE` (ban).
+   * Optional when verifying; omit, `null`, or empty to clear any previous reason.
+   */
+  rejectReason?: string | null;
+}
+
+/** Body for PUT /api/v1/campaigns/:id/completion-review (admin). */
+export interface AdminCompletionReviewBody {
+  decision: "approve" | "reject";
+  /** Required when `decision` is `"reject"`. */
+  rejectReason?: string | null;
+}
+
 export interface UpdateCampaignRequest {
   title?: string;
   titleVi?: string;
@@ -74,6 +95,8 @@ export interface CampaignResponse {
   descriptionVi?: string | null;
   descriptionEn?: string | null;
   status: number;
+  /** Admin ban reason; null when verified or never banned. */
+  rejectReason: string | null;
   startDate: Date | null;
   endDate: Date | null;
   detailAddress: string | null;
@@ -272,6 +295,7 @@ export interface CampaignListQuery {
   lang?: "en" | "vi";
   search?: string;
   status?: number;
+  statuses?: number[];
   createdBy?: string;
   /** Campaigns where this user is an active manager. */
   managerId?: string;

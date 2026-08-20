@@ -133,22 +133,26 @@ router.put(
 router.get("/:id", authenticate, campaignController.getCampaignById);
 
 /**
- * @route   PUT /api/v1/campaigns/:id/reject
- * @desc    Admin reject draft campaign (status → inactive; linked reports return to pending)
+ * @route   PUT /api/v1/campaigns/:id/completion-review
+ * @desc    Admin approve or reject pending completion (WAITING_CONFIRMED)
  * @access  Private (Admin only)
  */
-router.put("/:id/reject", authenticate, campaignController.adminRejectCampaign);
+router.put(
+  "/:id/completion-review",
+  authenticate,
+  campaignController.adminReviewCampaignCompletion,
+);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/verify
- * @desc    Admin-approve campaign (status → active, is_verify)
+ * @desc    Admin verify (ACTIVE) or ban (INACTIVE) a campaign; ban requires reject_reason
  * @access  Private (Admin only)
  */
 router.put("/:id/verify", authenticate, campaignController.adminVerifyCampaign);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/mark-done
- * @desc    Manager: submit for final admin completion approval. Admin: finalize (completed).
+ * @desc    Manager: submit for final admin completion approval.
  * @access  Private
  */
 router.put("/:id/mark-done", authenticate, campaignController.markCampaignDone);

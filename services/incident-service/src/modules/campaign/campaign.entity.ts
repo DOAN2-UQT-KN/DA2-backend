@@ -45,6 +45,7 @@ export const toCampaignResponse = (
     descriptionVi: entity.descriptionVi ?? entity.description,
     descriptionEn: entity.descriptionEn ?? null,
     status: entity.status,
+    rejectReason: entity.rejectReason ?? null,
     startDate: entity.startDate,
     endDate: entity.endDate,
     detailAddress: entity.detailAddress,

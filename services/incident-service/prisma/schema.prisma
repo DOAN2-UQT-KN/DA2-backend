@@ -75,6 +75,8 @@ model Campaign {
   descriptionVi String? @map("description_vi")
   descriptionEn String? @map("description_en")
   status      Int     @default(12)
+  /** Admin-provided reason when the campaign is banned; cleared on verify. */
+  rejectReason String? @map("reject_reason")
   startDate   DateTime? @map("start_date")
   endDate     DateTime? @map("end_date")
   detailAddress String? @map("detail_address") @db.VarChar(255)
