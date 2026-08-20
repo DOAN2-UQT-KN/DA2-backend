@@ -53,6 +53,13 @@ export interface AdminVerifyCampaignBody {
   rejectReason?: string | null;
 }
 
+/** Body for PUT /api/v1/campaigns/:id/completion-review (admin). */
+export interface AdminCompletionReviewBody {
+  decision: "approve" | "reject";
+  /** Required when `decision` is `"reject"`. */
+  rejectReason?: string | null;
+}
+
 export interface UpdateCampaignRequest {
   title?: string;
   titleVi?: string;

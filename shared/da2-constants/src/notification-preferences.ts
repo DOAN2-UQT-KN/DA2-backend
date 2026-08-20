@@ -50,6 +50,8 @@ export function notificationKindToPreferenceKey(
       return "campaignNearbyVerify";
     case "CAMPAIGN_DONE":
       return "campaignDone";
+    case "CAMPAIGN_COMPLETION_APPROVED_BY_ADMIN":
+      return "campaignDone";
     case "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN":
       return "campaignCompletionRejected";
     case "VOLUNTEER_REQUEST":

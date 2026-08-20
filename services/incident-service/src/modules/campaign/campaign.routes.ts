@@ -133,11 +133,15 @@ router.put(
 router.get("/:id", authenticate, campaignController.getCampaignById);
 
 /**
- * @route   PUT /api/v1/campaigns/:id/reject
- * @desc    Admin reject pending completion (WAITING_CONFIRMED → INREVIEW)
+ * @route   PUT /api/v1/campaigns/:id/completion-review
+ * @desc    Admin approve or reject pending completion (WAITING_CONFIRMED)
  * @access  Private (Admin only)
  */
-router.put("/:id/reject", authenticate, campaignController.adminRejectCampaign);
+router.put(
+  "/:id/completion-review",
+  authenticate,
+  campaignController.adminReviewCampaignCompletion,
+);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/verify
@@ -148,7 +152,7 @@ router.put("/:id/verify", authenticate, campaignController.adminVerifyCampaign);
 
 /**
  * @route   PUT /api/v1/campaigns/:id/mark-done
- * @desc    Manager: submit for final admin completion approval. Admin: finalize (completed).
+ * @desc    Manager: submit for final admin completion approval.
  * @access  Private
  */
 router.put("/:id/mark-done", authenticate, campaignController.markCampaignDone);

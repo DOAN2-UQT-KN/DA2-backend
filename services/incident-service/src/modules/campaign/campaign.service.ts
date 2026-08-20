@@ -1306,10 +1306,34 @@ export class CampaignService {
     );
   }
 
-  /** Admin-only: reject completion submission → in review + notify managers. */
+  /** Admin-only: approve or reject a pending completion submission. */
+  async adminReviewCampaignCompletion(
+    id: string,
+    adminUserId: string,
+    decision: "approve" | "reject",
+    rejectReason: string | undefined,
+    viewerUserId?: string | null,
+  ): Promise<CampaignResponse> {
+    if (decision === "approve") {
+      return this.adminFinalizeCampaignCompletion(
+        id,
+        adminUserId,
+        viewerUserId,
+      );
+    }
+    return this.adminRejectCampaign(
+      id,
+      adminUserId,
+      rejectReason ?? "",
+      viewerUserId,
+    );
+  }
+
+  /** Admin-only: reject completion submission → in review + notify org owner. */
   async adminRejectCampaign(
     id: string,
     adminUserId: string,
+    rejectReason: string,
     viewerUserId?: string | null,
   ): Promise<CampaignResponse> {
     const existing = await campaignRepository.findById(id);
@@ -1320,19 +1344,22 @@ export class CampaignService {
     }
 
     if (existing.status === GlobalStatus._STATUS_WAITING_CONFIRMED) {
+      const trimmedReason = rejectReason.trim();
       const updated = await campaignRepository.update(id, {
         status: GlobalStatus._STATUS_INREVIEW,
+        rejectReason: trimmedReason,
         updatedBy: adminUserId,
       });
 
-      const managerUserIds = this.collectCampaignManagerUserIds(existing);
-      void this.notifyCampaignManagersCompletionRejectedByAdmin({
+      void this.notifyOrganizationOwnerOfCompletionReview({
+        organizationId: existing.organizationId,
         campaignId: id,
         campaign: existing,
-        managerUserIds,
+        outcome: "rejected",
+        rejectReason: trimmedReason,
       }).catch((err) => {
         console.warn(
-          "[campaign] failed to notify managers of completion rejection",
+          "[campaign] failed to notify org owner of completion rejection",
           err,
         );
       });
@@ -1544,6 +1571,7 @@ export class CampaignService {
           where: { id },
           data: {
             status: GlobalStatus._STATUS_COMPLETED,
+            rejectReason: null,
             updatedBy: userId,
           },
         });
@@ -1596,6 +1624,18 @@ export class CampaignService {
     }).catch((err) => {
       console.warn(
         "[campaign] failed to notify volunteers of campaign completion",
+        err,
+      );
+    });
+
+    void this.notifyOrganizationOwnerOfCompletionReview({
+      organizationId: existing.organizationId,
+      campaignId: id,
+      campaign: existing,
+      outcome: "approved",
+    }).catch((err) => {
+      console.warn(
+        "[campaign] failed to notify org owner of completion approval",
         err,
       );
     });
@@ -1657,37 +1697,49 @@ export class CampaignService {
     );
   }
 
-  private collectCampaignManagerUserIds(entity: CampaignWithReports): string[] {
-    const ids = new Set<string>();
-    if (entity.createdBy) {
-      ids.add(entity.createdBy);
-    }
-    for (const m of entity.campaignManagers) {
-      if (m.userId) {
-        ids.add(m.userId);
-      }
-    }
-    return [...ids];
+  private async resolveOrganizationOwnerId(
+    organizationId: string,
+  ): Promise<string | null> {
+    const org = await organizationRepository.findById(organizationId);
+    return org?.ownerId ?? null;
   }
 
-  private async notifyCampaignManagersCompletionRejectedByAdmin(args: {
+  private async notifyOrganizationOwnerOfCompletionReview(args: {
+    organizationId: string;
     campaignId: string;
     campaign: {
       title: string;
       titleVi?: string | null;
       titleEn?: string | null;
     };
-    managerUserIds: string[];
+    outcome: "approved" | "rejected";
+    rejectReason?: string;
   }): Promise<void> {
-    if (args.managerUserIds.length === 0) {
+    const ownerId = await this.resolveOrganizationOwnerId(args.organizationId);
+    if (!ownerId) {
       return;
     }
+
+    const titlePayload = campaignTitleNotificationPayload(args.campaign);
+    if (args.outcome === "approved") {
+      await enqueueWebsiteNotificationsToUsers({
+        kind: "CAMPAIGN_COMPLETION_APPROVED_BY_ADMIN",
+        userIds: [ownerId],
+        payload: {
+          campaignId: args.campaignId,
+          ...titlePayload,
+        },
+      });
+      return;
+    }
+
     await enqueueWebsiteNotificationsToUsers({
       kind: "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN",
-      userIds: args.managerUserIds,
+      userIds: [ownerId],
       payload: {
         campaignId: args.campaignId,
-        ...campaignTitleNotificationPayload(args.campaign),
+        rejectReason: args.rejectReason ?? "",
+        ...titlePayload,
       },
     });
   }

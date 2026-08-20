@@ -13,6 +13,7 @@ import { campaignJoiningRequestService } from "./campaign_joining_request/campai
 import { campaignAttendanceService } from "./campaign_attendance/campaign_attendance.service";
 import { GlobalStatus, JoinRequestStatus } from "../../constants/status.enum";
 import type {
+  AdminCompletionReviewBody,
   AdminVerifyCampaignBody,
   CampaignListQuery,
   CampaignManagersListQuery,
@@ -533,10 +534,38 @@ export class CampaignController {
   ];
 
   /**
-   * Reject a pending campaign completion (admin only). Draft ban uses PUT /verify.
+   * Admin review of a pending campaign completion (approve or reject).
    */
-  adminRejectCampaign = [
+  adminReviewCampaignCompletion = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
+    body("decision")
+      .isIn(["approve", "reject"])
+      .withMessage('decision must be "approve" or "reject"'),
+    body("rejectReason").custom((value, { req }) => {
+      const decision = req.body?.decision;
+      const isReject = decision === "reject";
+      if (value === undefined || value === null) {
+        if (isReject) {
+          throw new Error(
+            "reject_reason is required when rejecting completion",
+          );
+        }
+        return true;
+      }
+      if (typeof value !== "string") {
+        throw new Error("reject_reason must be a string or null");
+      }
+      const trimmed = value.trim();
+      if (isReject && !trimmed) {
+        throw new Error(
+          "reject_reason is required when rejecting completion",
+        );
+      }
+      if (trimmed.length > 5000) {
+        throw new Error("reject_reason too long (max 5000 characters)");
+      }
+      return true;
+    }),
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -552,29 +581,40 @@ export class CampaignController {
           return sendError(res, HTTP_STATUS.UNAUTHORIZED);
         }
 
-        const role = req.user?.role;
-        const normalizedRole = role?.toLowerCase();
-        if (!normalizedRole || normalizedRole !== "admin") {
+        const role = req.user?.role?.toLowerCase();
+        if (role !== "admin") {
           return sendError(
             res,
             HTTP_STATUS.FORBIDDEN.withMessage(
-              "Only admin can reject a campaign",
+              "Only admin can review campaign completion",
             ),
           );
         }
 
-        const campaign = await campaignService.adminRejectCampaign(
+        const { decision, rejectReason } =
+          req.body as AdminCompletionReviewBody;
+        const trimmedReason =
+          typeof rejectReason === "string" ? rejectReason.trim() : undefined;
+
+        const campaign = await campaignService.adminReviewCampaignCompletion(
           req.params.id,
           userId,
-          req.user?.userId,
+          decision,
+          trimmedReason,
+          userId,
         );
+
         sendSuccess(
           res,
-          HTTP_STATUS.OK.withMessage("Campaign rejected successfully"),
+          HTTP_STATUS.OK.withMessage(
+            decision === "approve"
+              ? "Campaign marked as done successfully"
+              : "Completion request rejected; campaign returned to in review",
+          ),
           { campaign },
         );
       } catch (error) {
-        console.error("Admin reject campaign error:", error);
+        console.error("Admin review campaign completion error:", error);
         if (sendHttpErrorResponse(res, error)) {
           return;
         }
@@ -584,6 +624,13 @@ export class CampaignController {
               res,
               HTTP_STATUS.NOT_FOUND.withMessage("Campaign not found"),
             );
+          }
+          if (
+            error.message.includes("must await admin completion") ||
+            error.message.includes("Some tasks is not completed") ||
+            error.message.includes("Reject only applies")
+          ) {
+            return sendError(res, HTTP_STATUS.BAD_REQUEST.withMessage(error.message));
           }
         }
         sendError(res, HTTP_STATUS.INTERNAL_SERVER_ERROR);
@@ -652,7 +699,6 @@ export class CampaignController {
 
   /**
    * Manager: submit campaign for final admin completion approval (in review → awaiting admin).
-   * Admin: finalize completion (awaiting admin → completed).
    */
   markCampaignDone = [
     param("id").isUUID().withMessage("Campaign ID must be a valid UUID"),
@@ -671,26 +717,15 @@ export class CampaignController {
           return sendError(res, HTTP_STATUS.UNAUTHORIZED);
         }
 
-        const role = req.user?.role?.toLowerCase();
-        const isAdmin = role === "admin";
-
-        const campaign = isAdmin
-          ? await campaignService.adminFinalizeCampaignCompletion(
-              req.params.id,
-              userId,
-            )
-          : await campaignService.submitCampaignCompletionForAdminApproval(
-              req.params.id,
-              userId,
-            );
+        const campaign =
+          await campaignService.submitCampaignCompletionForAdminApproval(
+            req.params.id,
+            userId,
+          );
 
         sendSuccess(
           res,
-          HTTP_STATUS.OK.withMessage(
-            isAdmin
-              ? "Campaign marked as done successfully"
-              : "Campaign submitted for admin approval",
-          ),
+          HTTP_STATUS.OK.withMessage("Campaign submitted for admin approval"),
           { campaign },
         );
       } catch (error) {

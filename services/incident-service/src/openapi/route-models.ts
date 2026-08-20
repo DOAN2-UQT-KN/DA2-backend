@@ -82,7 +82,8 @@ export const OPENAPI_ROUTE_MODELS: OpenapiRouteModels = {
   "GET /api/v1/campaigns/:id": {
     responseData: "CampaignOneEnvelopeData",
   },
-  "PUT /api/v1/campaigns/:id/reject": {
+  "PUT /api/v1/campaigns/:id/completion-review": {
+    requestBody: "AdminCompletionReviewBody",
     responseData: "CampaignOneEnvelopeData",
   },
   "PUT /api/v1/campaigns/:id/verify": {

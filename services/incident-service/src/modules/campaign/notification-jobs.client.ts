@@ -127,14 +127,32 @@ export async function enqueueCampaignCompletionPendingAdminWebsiteNotification(p
   });
 }
 
-/** In-app: campaign managers — admin rejected the completion request; campaign is back in review. */
+/** In-app: organization owner — admin rejected the completion request; campaign is back in review. */
 export async function enqueueCampaignCompletionRejectedByAdminWebsiteNotification(params: {
+  userId: string;
+  campaignTitle: string;
+  campaignId: string;
+  rejectReason: string;
+}): Promise<void> {
+  await enqueueWebsiteNotificationsToUsers({
+    kind: "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN",
+    userIds: [params.userId],
+    payload: {
+      campaignTitle: params.campaignTitle,
+      campaignId: params.campaignId,
+      rejectReason: params.rejectReason,
+    },
+  });
+}
+
+/** In-app: organization owner — admin approved campaign completion. */
+export async function enqueueCampaignCompletionApprovedByAdminWebsiteNotification(params: {
   userId: string;
   campaignTitle: string;
   campaignId: string;
 }): Promise<void> {
   await enqueueWebsiteNotificationsToUsers({
-    kind: "CAMPAIGN_COMPLETION_REJECTED_BY_ADMIN",
+    kind: "CAMPAIGN_COMPLETION_APPROVED_BY_ADMIN",
     userIds: [params.userId],
     payload: {
       campaignTitle: params.campaignTitle,
