@@ -1346,7 +1346,7 @@ export class CampaignService {
     if (existing.status === GlobalStatus._STATUS_WAITING_CONFIRMED) {
       const trimmedReason = rejectReason.trim();
       const updated = await campaignRepository.update(id, {
-        status: GlobalStatus._STATUS_INREVIEW,
+        status: GlobalStatus._STATUS_ACTIVE,
         rejectReason: trimmedReason,
         updatedBy: adminUserId,
       });
@@ -1375,7 +1375,8 @@ export class CampaignService {
   }
 
   /**
-   * Manager: campaign is in review (all tasks done) → awaiting final admin approval.
+   * Manager: active campaign (all tasks done) → awaiting final admin approval.
+   * `INREVIEW` is accepted only for campaigns already in that legacy status.
    */
   async submitCampaignCompletionForAdminApproval(
     id: string,
@@ -1410,11 +1411,11 @@ export class CampaignService {
     }
 
     const canSubmitFromStatus =
-      existing.status === GlobalStatus._STATUS_INREVIEW ||
-      existing.status === GlobalStatus._STATUS_ACTIVE;
+      existing.status === GlobalStatus._STATUS_ACTIVE ||
+      existing.status === GlobalStatus._STATUS_INREVIEW;
     if (!canSubmitFromStatus) {
       throw new Error(
-        "Campaign must be active or in review before requesting completion approval",
+        "Campaign must be active before requesting completion approval",
       );
     }
 

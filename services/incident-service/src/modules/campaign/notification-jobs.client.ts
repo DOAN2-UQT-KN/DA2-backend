@@ -127,7 +127,7 @@ export async function enqueueCampaignCompletionPendingAdminWebsiteNotification(p
   });
 }
 
-/** In-app: organization owner — admin rejected the completion request; campaign is back in review. */
+/** In-app: organization owner — admin rejected the completion request; campaign is active again. */
 export async function enqueueCampaignCompletionRejectedByAdminWebsiteNotification(params: {
   userId: string;
   campaignTitle: string;

@@ -609,7 +609,7 @@ export class CampaignController {
           HTTP_STATUS.OK.withMessage(
             decision === "approve"
               ? "Campaign marked as done successfully"
-              : "Completion request rejected; campaign returned to in review",
+              : "Completion request rejected; campaign returned to active",
           ),
           { campaign },
         );
