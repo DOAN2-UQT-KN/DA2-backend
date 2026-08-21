@@ -194,7 +194,7 @@ export class UserService {
     async getAllUsers(query: AdminListUsersQuery): Promise<AdminUsersListResult> {
         const { users, total } = await userRepository.findManyForAdmin(query);
         return {
-            users: users.map((u) => toUserResponse(u)),
+            users: users.map((u) => toUserResponse(u, { includeLocation: true })),
             total,
             page: query.page,
             limit: query.limit,
