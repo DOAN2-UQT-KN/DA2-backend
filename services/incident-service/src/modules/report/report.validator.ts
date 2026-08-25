@@ -1,0 +1,130 @@
+import { body, param, query } from "express-validator";
+
+const REPORT_STATUSES_QUERY_MAX = 25;
+
+export const reportSearchQueryValidators = [
+  query("search").optional().trim(),
+  query("status").optional().isInt(),
+  query("statuses")
+    .optional()
+    .custom((value) => {
+      if (value === undefined || value === null || value === "") {
+        return true;
+      }
+      const raw = Array.isArray(value)
+        ? value.flatMap((v) => String(v).split(","))
+        : String(value).split(",");
+      const tokens = raw.map((s) => String(s).trim()).filter((s) => s.length > 0);
+      if (tokens.length === 0) {
+        return true;
+      }
+      if (tokens.length > REPORT_STATUSES_QUERY_MAX) {
+        throw new Error(
+          `statuses must contain at most ${REPORT_STATUSES_QUERY_MAX} values`,
+        );
+      }
+      if (!tokens.every((t) => /^-?\d+$/.test(t))) {
+        throw new Error("statuses must be integer(s)");
+      }
+      return true;
+    }),
+  query("wasteType").optional().trim(),
+  query("severityLevel").optional().isInt({ min: 1, max: 5 }),
+  query("latitude").optional().isFloat({ min: -90, max: 90 }),
+  query("longitude").optional().isFloat({ min: -180, max: 180 }),
+  query("maxDistance").optional().isInt({ min: 1 }),
+  query("sortBy").optional().isIn(["distance", "createdAt", "severityLevel"]),
+  query("sortOrder").optional().isIn(["asc", "desc"]),
+  query("page").optional().isInt({ min: 1 }),
+  query("limit").optional().isInt({ min: 1, max: 100 }),
+];
+
+export const createReportValidators = [
+  body("title").notEmpty().withMessage("Title is required").trim(),
+  body("description").optional().trim(),
+  body("wasteType").optional().trim(),
+  body("severityLevel")
+    .optional()
+    .isInt({ min: 1, max: 5 })
+    .withMessage("Severity level must be between 1 and 5"),
+  body("latitude")
+    .exists({ values: "null" })
+    .withMessage("Latitude is required")
+    .bail()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("Invalid latitude"),
+  body("longitude")
+    .exists({ values: "null" })
+    .withMessage("Longitude is required")
+    .bail()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("Invalid longitude"),
+  body("detailAddress").optional().trim(),
+  body("imageUrls")
+    .isArray({ min: 1 })
+    .withMessage("imageUrls must be a non-empty array"),
+  body("imageUrls.*")
+    .isString()
+    .withMessage("Each image_url must be a string")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("Each image_url must not be empty"),
+];
+
+export const updateReportValidators = [
+  body("title").optional().trim(),
+  body("titleVi").optional().trim(),
+  body("titleEn").optional().trim(),
+  body("description").optional().trim(),
+  body("descriptionVi").optional().trim(),
+  body("descriptionEn").optional().trim(),
+  body("lang").optional().isIn(["vi", "en"]),
+  body("wasteType").optional().trim(),
+  body("severityLevel")
+    .optional()
+    .isInt({ min: 1, max: 5 })
+    .withMessage("Severity level must be between 1 and 5"),
+  body("latitude")
+    .optional()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("Invalid latitude"),
+  body("longitude")
+    .optional()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("Invalid longitude"),
+  body("detailAddress").optional().trim(),
+];
+
+export const addReportImagesValidators = [
+  body("imageUrls")
+    .isArray({ min: 1 })
+    .withMessage("imageUrls must be a non-empty array"),
+  body("imageUrls.*")
+    .isString()
+    .withMessage("Each image URL must be a string")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("Each image URL must not be empty"),
+];
+
+export const reportIdParamValidator = [
+  param("id").isUUID().withMessage("Report ID must be a valid UUID"),
+];
+
+export const deleteReportMediaFileValidators = [
+  param("mediaFileId")
+    .isUUID()
+    .withMessage("mediaFileId must be a valid UUID"),
+];
+
+export const adminBanReportValidators = [
+  ...reportIdParamValidator,
+  body("rejectReason")
+    .isString()
+    .trim()
+    .notEmpty()
+    .isLength({ max: 5000 })
+    .withMessage("reject_reason is required when banning a report"),
+];

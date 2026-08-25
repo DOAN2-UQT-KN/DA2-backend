@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { body, param, query, validationResult } from "express-validator";
+import { validationResult } from "express-validator";
 import {
   HTTP_STATUS,
   sendError,
@@ -9,9 +9,17 @@ import {
 import { reportService } from "./report.service";
 import { ReportSearchQuery, type AdminBanReportBody, type ReportMediaFileByIdResponse } from "./report.dto";
 import { normalizeQueryUuidList } from "../../utils/query-uuid-list";
+import {
+  addReportImagesValidators,
+  adminBanReportValidators,
+  createReportValidators,
+  deleteReportMediaFileValidators,
+  reportIdParamValidator,
+  reportSearchQueryValidators,
+  updateReportValidators,
+} from "./report.validator";
 
 const REPORT_BATCH_QUERY_MAX_IDS = 100;
-const REPORT_STATUSES_QUERY_MAX = 25;
 
 /** Repeated keys (`?statuses=21&statuses=22`) or comma-separated (`?statuses=21,22`). */
 function normalizeQueryIntList(value: unknown): number[] {
@@ -62,43 +70,6 @@ function buildReportSearchQuery(req: Request): ReportSearchQuery {
   };
 }
 
-const reportSearchQueryValidators = [
-  query("search").optional().trim(),
-  query("status").optional().isInt(),
-  query("statuses")
-    .optional()
-    .custom((value) => {
-      if (value === undefined || value === null || value === "") {
-        return true;
-      }
-      const raw = Array.isArray(value)
-        ? value.flatMap((v) => String(v).split(","))
-        : String(value).split(",");
-      const tokens = raw.map((s) => String(s).trim()).filter((s) => s.length > 0);
-      if (tokens.length === 0) {
-        return true;
-      }
-      if (tokens.length > REPORT_STATUSES_QUERY_MAX) {
-        throw new Error(
-          `statuses must contain at most ${REPORT_STATUSES_QUERY_MAX} values`,
-        );
-      }
-      if (!tokens.every((t) => /^-?\d+$/.test(t))) {
-        throw new Error("statuses must be integer(s)");
-      }
-      return true;
-    }),
-  query("wasteType").optional().trim(),
-  query("severityLevel").optional().isInt({ min: 1, max: 5 }),
-  query("latitude").optional().isFloat({ min: -90, max: 90 }),
-  query("longitude").optional().isFloat({ min: -180, max: 180 }),
-  query("maxDistance").optional().isInt({ min: 1 }),
-  query("sortBy").optional().isIn(["distance", "createdAt", "severityLevel"]),
-  query("sortOrder").optional().isIn(["asc", "desc"]),
-  query("page").optional().isInt({ min: 1 }),
-  query("limit").optional().isInt({ min: 1, max: 100 }),
-];
-
 export class ReportController {
   constructor() { }
 
@@ -106,36 +77,7 @@ export class ReportController {
    * Create a new report
    */
   createReport = [
-    body("title").notEmpty().withMessage("Title is required").trim(),
-    body("description").optional().trim(),
-    body("wasteType").optional().trim(),
-    body("severityLevel")
-      .optional()
-      .isInt({ min: 1, max: 5 })
-      .withMessage("Severity level must be between 1 and 5"),
-    body("latitude")
-      .exists({ values: "null" })
-      .withMessage("Latitude is required")
-      .bail()
-      .isFloat({ min: -90, max: 90 })
-      .withMessage("Invalid latitude"),
-    body("longitude")
-      .exists({ values: "null" })
-      .withMessage("Longitude is required")
-      .bail()
-      .isFloat({ min: -180, max: 180 })
-      .withMessage("Invalid longitude"),
-    body("detailAddress").optional().trim(),
-    body("imageUrls")
-      .isArray({ min: 1 })
-      .withMessage("imageUrls must be a non-empty array"),
-    body("imageUrls.*")
-      .isString()
-      .withMessage("Each image_url must be a string")
-      .bail()
-      .trim()
-      .notEmpty()
-      .withMessage("Each image_url must not be empty"),
+    ...createReportValidators,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -164,9 +106,6 @@ export class ReportController {
     },
   ];
 
-  /**
-   * @query reportIds — required; comma-separated or repeated; max 100 UUIDs
-   */
   getReportsByIds = [
     async (req: Request, res: Response): Promise<void> => {
       const parsed = normalizeQueryUuidList(
@@ -322,7 +261,7 @@ export class ReportController {
    * (nothing pending or in process).
    */
   getReportBackgroundJobsStatus = [
-    param("id").isUUID().withMessage("Report ID must be a valid UUID"),
+    ...reportIdParamValidator,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -357,27 +296,7 @@ export class ReportController {
    * Update a report
    */
   updateReport = [
-    body("title").optional().trim(),
-    body("titleVi").optional().trim(),
-    body("titleEn").optional().trim(),
-    body("description").optional().trim(),
-    body("descriptionVi").optional().trim(),
-    body("descriptionEn").optional().trim(),
-    body("lang").optional().isIn(["vi", "en"]),
-    body("wasteType").optional().trim(),
-    body("severityLevel")
-      .optional()
-      .isInt({ min: 1, max: 5 })
-      .withMessage("Severity level must be between 1 and 5"),
-    body("latitude")
-      .optional()
-      .isFloat({ min: -90, max: 90 })
-      .withMessage("Invalid latitude"),
-    body("longitude")
-      .optional()
-      .isFloat({ min: -180, max: 180 })
-      .withMessage("Invalid longitude"),
-    body("detailAddress").optional().trim(),
+    ...updateReportValidators,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -414,16 +333,7 @@ export class ReportController {
    * Add images to a report (append media)
    */
   addReportImages = [
-    body("imageUrls")
-      .isArray({ min: 1 })
-      .withMessage("imageUrls must be a non-empty array"),
-    body("imageUrls.*")
-      .isString()
-      .withMessage("Each image URL must be a string")
-      .bail()
-      .trim()
-      .notEmpty()
-      .withMessage("Each image URL must not be empty"),
+    ...addReportImagesValidators,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -458,9 +368,7 @@ export class ReportController {
    * Delete a report media file (soft delete)
    */
   deleteReportMediaFile = [
-    param("mediaFileId")
-      .isUUID()
-      .withMessage("mediaFileId must be a valid UUID"),
+    ...deleteReportMediaFileValidators,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -499,13 +407,7 @@ export class ReportController {
    * Ban a report (admin moderation only). Requires `reject_reason`.
    */
   adminBanReport = [
-    param("id").isUUID().withMessage("Report ID must be a valid UUID"),
-    body("rejectReason")
-      .isString()
-      .trim()
-      .notEmpty()
-      .isLength({ max: 5000 })
-      .withMessage("reject_reason is required when banning a report"),
+    ...adminBanReportValidators,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -554,7 +456,7 @@ export class ReportController {
    * Verify a report (admin only). Sets `is_verify` and status pending (eligible for campaigns).
    */
   adminVerifyReport = [
-    param("id").isUUID().withMessage("Report ID must be a valid UUID"),
+    ...reportIdParamValidator,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
@@ -600,7 +502,7 @@ export class ReportController {
    * Mark report as done (admin only)
    */
   adminMarkReportDone = [
-    param("id").isUUID().withMessage("Report ID must be a valid UUID"),
+    ...reportIdParamValidator,
 
     async (req: Request, res: Response): Promise<void> => {
       const errors = validationResult(req);
