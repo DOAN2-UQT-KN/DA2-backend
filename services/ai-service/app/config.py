@@ -18,5 +18,12 @@ class Settings(BaseSettings):
     cors_origin: str = "*"
     incident_api_base_url: str = "http://localhost:3001"
 
+    # SQS (REPORT_SUBMITTED → verification pipeline worker)
+    sqs_ai_analysis_queue_url: str = ""
+    aws_region: str = "us-east-1"
+    aws_sqs_endpoint: Optional[str] = None
+    aws_access_key_id: str = "test"
+    aws_secret_access_key: str = "test"
+
 
 settings = Settings()

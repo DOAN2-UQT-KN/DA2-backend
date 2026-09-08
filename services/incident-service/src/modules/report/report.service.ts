@@ -266,6 +266,18 @@ export class ReportService {
         reportMediaFileIds = reportMediaRows.map((r) => r.id);
       }
 
+      await emitOutbox(tx, {
+        aggregateType: "report",
+        aggregateId: createdReport.id,
+        eventType: OutboxEventType.REPORT_SUBMITTED,
+        payload: {
+          reportId: createdReport.id,
+          userId,
+          reportMediaFileIds,
+        },
+        dedupKey: `${OutboxEventType.REPORT_SUBMITTED}:${createdReport.id}`,
+      });
+
       return {
         report: createdReport,
         reportMediaFileIds,
