@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { computePHash, computeSha256 } from "../media-hash.util";
 
 describe("computeSha256", () => {
@@ -14,7 +15,38 @@ describe("computeSha256", () => {
 });
 
 describe("computePHash", () => {
-  it("remains a stub", () => {
-    expect(computePHash(Buffer.from("abc"))).toBeNull();
+  async function solidPng(r: number, g: number, b: number): Promise<Buffer> {
+    return sharp({
+      create: {
+        width: 32,
+        height: 32,
+        channels: 3,
+        background: { r, g, b },
+      },
+    })
+      .png()
+      .toBuffer();
+  }
+
+  it("returns 16-char lowercase hex for a valid image", async () => {
+    const png = await solidPng(40, 120, 200);
+    const hash = await computePHash(png);
+    expect(hash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("returns the same hash for the same buffer", async () => {
+    const png = await solidPng(10, 20, 30);
+    const a = await computePHash(png);
+    const b = await computePHash(png);
+    expect(a).not.toBeNull();
+    expect(a).toBe(b);
+  });
+
+  it("returns null for an empty buffer", async () => {
+    expect(await computePHash(Buffer.alloc(0))).toBeNull();
+  });
+
+  it("returns null for invalid bytes", async () => {
+    expect(await computePHash(Buffer.from("not-an-image"))).toBeNull();
   });
 });

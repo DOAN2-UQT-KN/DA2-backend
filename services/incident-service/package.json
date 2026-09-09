@@ -52,6 +52,8 @@
     "helmet": "^7.1.0",
     "image-size": "^2.0.2",
     "jsonwebtoken": "^9.0.2",
+    "sharp": "^0.35.4",
+    "sharp-phash": "^2.2.0",
     "swagger-ui-express": "^5.0.1",
     "ts-json-schema-generator": "^2.4.0"
   },

@@ -5,8 +5,8 @@ import { MediaHashAlgorithm } from "./media-hash.constants";
 import { computePHash, computeSha256 } from "./media-hash.util";
 
 /**
- * Runs the image hash step for a media row. Persists only non-null results.
- * SHA-256 is computed; pHash stub yields no row until implemented.
+ * Runs the image hash step for a media row. Persists only non-null results
+ * (SHA-256 and/or pHash).
  */
 export async function processImageHashes(
   mediaId: string,
@@ -30,13 +30,13 @@ export async function processImageHashes(
     });
   }
 
-  const phash = computePHash(buffer);
-  if (phash) {
+  const perceptual = await computePHash(buffer);
+  if (perceptual) {
     rows.push({
       id: randomUUID(),
       mediaId,
       algorithm: MediaHashAlgorithm.PHASH,
-      hash: phash,
+      hash: perceptual,
     });
   }
 
