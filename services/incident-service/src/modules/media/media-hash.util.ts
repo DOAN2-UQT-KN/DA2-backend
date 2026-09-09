@@ -1,11 +1,15 @@
 /**
- * Image content hashing — stubs only.
- * Real SHA-256 / pHash algorithms will be implemented later.
+ * Image content hashing.
+ * SHA-256 is implemented; pHash remains a stub for later.
  */
 
-export function computeSha256(_buffer: Buffer): string | null {
-  // TODO: implement SHA-256 of file bytes
-  return null;
+import { createHash } from "node:crypto";
+
+export function computeSha256(buffer: Buffer): string | null {
+  if (!buffer || buffer.byteLength === 0) {
+    return null;
+  }
+  return createHash("sha256").update(buffer).digest("hex");
 }
 
 export function computePHash(_buffer: Buffer): string | null {

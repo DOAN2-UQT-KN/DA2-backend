@@ -6,7 +6,7 @@ import { computePHash, computeSha256 } from "./media-hash.util";
 
 /**
  * Runs the image hash step for a media row. Persists only non-null results.
- * Empty stubs currently yield no rows.
+ * SHA-256 is computed; pHash stub yields no row until implemented.
  */
 export async function processImageHashes(
   mediaId: string,
