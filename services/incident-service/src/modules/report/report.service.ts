@@ -49,6 +49,7 @@ import { OutboxEventType } from "../../outbox/outbox.types";
 import {
   prepareMediaFromUrl,
 } from "../media/media-from-url.service";
+import { processImageHashes } from "../media/media-hash.service";
 
 /**
  * Serialize Media metadata for JSON responses (`fileSize` as string).
@@ -258,8 +259,8 @@ export class ReportService {
       request.description?.trim() ||
       "";
 
-    // Download + EXIF extract before opening the DB transaction (network I/O).
-    const mediaRows =
+    // Download + EXIF extract (+ hash stubs later) before opening the DB transaction.
+    const preparedMedia =
       imageUrls.length > 0
         ? await Promise.all(
             imageUrls.map((imageUrl, index) =>
@@ -300,8 +301,19 @@ export class ReportService {
       });
 
       let reportMediaFileIds: string[] = [];
-      if (mediaRows.length > 0) {
+      if (preparedMedia.length > 0) {
+        const mediaRows = preparedMedia.map((p) => p.media);
         await tx.media.createMany({ data: mediaRows });
+
+        for (const prepared of preparedMedia) {
+          if (prepared.buffer && prepared.media.id) {
+            await processImageHashes(
+              prepared.media.id,
+              prepared.buffer,
+              tx,
+            );
+          }
+        }
 
         const reportMediaRows = mediaRows.map((m) => ({
           id: randomUUID(),
@@ -804,8 +816,11 @@ export class ReportService {
     const reportMediaFileIds = await prisma.$transaction(async (tx) => {
       const createdIds: string[] = [];
 
-      for (const mediaData of preparedMedia) {
-        const media = await tx.media.create({ data: mediaData });
+      for (const prepared of preparedMedia) {
+        const media = await tx.media.create({ data: prepared.media });
+        if (prepared.buffer) {
+          await processImageHashes(media.id, prepared.buffer, tx);
+        }
 
         const reportMediaFile = await tx.reportMediaFile.create({
           data: {

@@ -70,11 +70,14 @@ describe("createReport (outbox producer)", () => {
     emitOutboxMock.mockResolvedValue(undefined);
     prepareMediaFromUrlMock.mockImplementation(
       async (input: { id?: string; url: string; type: string }) => ({
-        id: input.id ?? "media-1",
-        url: input.url,
-        type: input.type,
-        createdBy: "user-1",
-        updatedBy: "user-1",
+        media: {
+          id: input.id ?? "media-1",
+          url: input.url,
+          type: input.type,
+          createdBy: "user-1",
+          updatedBy: "user-1",
+        },
+        buffer: null,
       }),
     );
     txFake.report.create.mockResolvedValue({

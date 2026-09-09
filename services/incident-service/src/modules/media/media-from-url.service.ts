@@ -5,6 +5,7 @@ import {
   extractMediaFieldsFromBuffer,
   type ExtractedMediaFields,
 } from "./media-extract.util";
+import { processImageHashes } from "./media-hash.service";
 
 const DOWNLOAD_TIMEOUT_MS = 15_000;
 const MAX_DOWNLOAD_BYTES = 15 * 1024 * 1024;
@@ -21,6 +22,12 @@ export type CreateMediaFromUrlInput = {
   userId?: string;
   capture?: MediaCaptureInput | null;
   id?: string;
+};
+
+/** Media create payload plus downloaded bytes for the hash step (null if download failed). */
+export type PreparedMediaFromUrl = {
+  media: Prisma.MediaCreateManyInput;
+  buffer: Buffer | null;
 };
 
 function parseCapturedAt(value?: string): Date | null {
@@ -49,11 +56,11 @@ function emptyExtracted(): ExtractedMediaFields {
 
 /**
  * Download image bytes and extract metadata. On any failure returns empty
- * extracted fields (caller still persists url + capture).
+ * extracted fields and a null buffer (caller still persists url + capture).
  */
 export async function downloadAndExtractMedia(
   url: string,
-): Promise<ExtractedMediaFields> {
+): Promise<{ extracted: ExtractedMediaFields; buffer: Buffer | null }> {
   try {
     const response = await axios.get<ArrayBuffer>(url, {
       responseType: "arraybuffer",
@@ -69,13 +76,14 @@ export async function downloadAndExtractMedia(
         ? response.headers["content-type"]
         : null;
 
-    return await extractMediaFieldsFromBuffer(buffer, contentType);
+    const extracted = await extractMediaFieldsFromBuffer(buffer, contentType);
+    return { extracted, buffer };
   } catch (error) {
     console.warn(
       `[media] failed to download/extract metadata for url=${url}:`,
       error instanceof Error ? error.message : error,
     );
-    return emptyExtracted();
+    return { extracted: emptyExtracted(), buffer: null };
   }
 }
 
@@ -112,23 +120,31 @@ export function buildMediaCreateData(
 
 /**
  * Prepare media row data for createMany: download+extract outside the DB tx.
+ * Keeps the buffer so SHA256/pHash can run without a second download.
  */
 export async function prepareMediaFromUrl(
   input: CreateMediaFromUrlInput,
-): Promise<Prisma.MediaCreateManyInput> {
-  const extracted = await downloadAndExtractMedia(input.url);
-  return buildMediaCreateData(input, extracted);
+): Promise<PreparedMediaFromUrl> {
+  const { extracted, buffer } = await downloadAndExtractMedia(input.url);
+  return {
+    media: buildMediaCreateData(input, extracted),
+    buffer,
+  };
 }
 
 /**
- * Create a single Media row from a hosted URL (download + extract, never fails
- * the create when extract fails).
+ * Create a single Media row from a hosted URL (download + extract + hash stubs).
+ * Never fails the create when extract/hash fail.
  */
 export async function createMediaFromUrl(
   input: CreateMediaFromUrlInput,
   tx?: Prisma.TransactionClient,
 ) {
   const db = tx ?? prisma;
-  const data = await prepareMediaFromUrl(input);
-  return db.media.create({ data });
+  const prepared = await prepareMediaFromUrl(input);
+  const media = await db.media.create({ data: prepared.media });
+  if (prepared.buffer) {
+    await processImageHashes(media.id, prepared.buffer, db);
+  }
+  return media;
 }
