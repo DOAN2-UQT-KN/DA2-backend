@@ -352,7 +352,10 @@ export class ReportController {
         const report = await reportService.addReportImages(
           req.params.id,
           userId,
-          { imageUrls: req.body.imageUrls },
+          {
+            imageUrls: req.body.imageUrls,
+            mediaCaptures: req.body.mediaCaptures,
+          },
           req.user?.role,
         );
         sendSuccess(res, HTTP_STATUS.OK, { report });

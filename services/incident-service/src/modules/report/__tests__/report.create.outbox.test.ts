@@ -18,6 +18,7 @@ const transactionMock = jest.fn(
 );
 const enqueueMock = jest.fn().mockResolvedValue(undefined);
 const emitOutboxMock = jest.fn().mockResolvedValue(undefined);
+const prepareMediaFromUrlMock = jest.fn();
 
 jest.mock("../../../queue/register", () => ({
   backgroundJobDispatcher: { enqueue: enqueueMock },
@@ -30,6 +31,11 @@ jest.mock("../../../config/prisma.client", () => ({
 
 jest.mock("../../../outbox/outbox.writer", () => ({
   emitOutbox: (...args: unknown[]) => emitOutboxMock(...args),
+}));
+
+jest.mock("../../media/media-from-url.service", () => ({
+  prepareMediaFromUrl: (...args: unknown[]) =>
+    prepareMediaFromUrlMock(...args),
 }));
 
 jest.mock("../report.entity", () => ({
@@ -62,6 +68,15 @@ describe("createReport (outbox producer)", () => {
     jest.clearAllMocks();
     enqueueMock.mockResolvedValue(undefined);
     emitOutboxMock.mockResolvedValue(undefined);
+    prepareMediaFromUrlMock.mockImplementation(
+      async (input: { id?: string; url: string; type: string }) => ({
+        id: input.id ?? "media-1",
+        url: input.url,
+        type: input.type,
+        createdBy: "user-1",
+        updatedBy: "user-1",
+      }),
+    );
     txFake.report.create.mockResolvedValue({
       id: "report-new",
       userId: "user-1",
@@ -79,6 +94,7 @@ describe("createReport (outbox producer)", () => {
       imageUrls: ["https://cdn.example/a.jpg"],
     });
 
+    expect(prepareMediaFromUrlMock).toHaveBeenCalledTimes(1);
     expect(transactionMock).toHaveBeenCalledTimes(1);
     expect(emitOutboxMock).toHaveBeenCalledTimes(1);
     const [tx, event] = emitOutboxMock.mock.calls[0];

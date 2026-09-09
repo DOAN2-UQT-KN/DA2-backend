@@ -70,6 +70,22 @@ export const createReportValidators = [
     .trim()
     .notEmpty()
     .withMessage("Each image_url must not be empty"),
+  body("mediaCaptures")
+    .optional()
+    .isArray()
+    .withMessage("mediaCaptures must be an array"),
+  body("mediaCaptures.*.capturedAt")
+    .optional()
+    .isISO8601()
+    .withMessage("mediaCaptures.capturedAt must be an ISO8601 datetime"),
+  body("mediaCaptures.*.latitude")
+    .optional()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("mediaCaptures.latitude must be between -90 and 90"),
+  body("mediaCaptures.*.longitude")
+    .optional()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("mediaCaptures.longitude must be between -180 and 180"),
 ];
 
 export const updateReportValidators = [
@@ -107,6 +123,22 @@ export const addReportImagesValidators = [
     .trim()
     .notEmpty()
     .withMessage("Each image URL must not be empty"),
+  body("mediaCaptures")
+    .optional()
+    .isArray()
+    .withMessage("mediaCaptures must be an array"),
+  body("mediaCaptures.*.capturedAt")
+    .optional()
+    .isISO8601()
+    .withMessage("mediaCaptures.capturedAt must be an ISO8601 datetime"),
+  body("mediaCaptures.*.latitude")
+    .optional()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("mediaCaptures.latitude must be between -90 and 90"),
+  body("mediaCaptures.*.longitude")
+    .optional()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("mediaCaptures.longitude must be between -180 and 180"),
 ];
 
 export const reportIdParamValidator = [

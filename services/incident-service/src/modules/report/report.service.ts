@@ -46,6 +46,49 @@ import {
 } from "./report-status-notify.client";
 import { emitOutbox } from "../../outbox/outbox.writer";
 import { OutboxEventType } from "../../outbox/outbox.types";
+import {
+  prepareMediaFromUrl,
+} from "../media/media-from-url.service";
+
+/**
+ * Serialize Media metadata for JSON responses (`fileSize` as string).
+ */
+function toMediaMetadataResponse(media: {
+  mimeType: string | null;
+  fileSize: bigint | null;
+  width: number | null;
+  height: number | null;
+  capturedAt: Date | null;
+  latitude: number | null;
+  longitude: number | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  metadata: unknown;
+}): {
+  mimeType: string | null;
+  fileSize: string | null;
+  width: number | null;
+  height: number | null;
+  capturedAt: Date | null;
+  latitude: number | null;
+  longitude: number | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  metadata: unknown | null;
+} {
+  return {
+    mimeType: media.mimeType,
+    fileSize: media.fileSize != null ? media.fileSize.toString() : null,
+    width: media.width,
+    height: media.height,
+    capturedAt: media.capturedAt,
+    latitude: media.latitude,
+    longitude: media.longitude,
+    cameraMake: media.cameraMake,
+    cameraModel: media.cameraModel,
+    metadata: media.metadata ?? null,
+  };
+}
 
 /**
  * Best-effort enqueue of a TRANSLATE_TEXT job. Failure is logged but does NOT
@@ -215,6 +258,22 @@ export class ReportService {
       request.description?.trim() ||
       "";
 
+    // Download + EXIF extract before opening the DB transaction (network I/O).
+    const mediaRows =
+      imageUrls.length > 0
+        ? await Promise.all(
+            imageUrls.map((imageUrl, index) =>
+              prepareMediaFromUrl({
+                id: randomUUID(),
+                url: imageUrl,
+                type: MediaResourceType.REPORT,
+                userId,
+                capture: request.mediaCaptures?.[index] ?? null,
+              }),
+            ),
+          )
+        : [];
+
     const reportAndMedia = await prisma.$transaction(async (tx) => {
       const createdReport = await tx.report.create({
         data: {
@@ -241,21 +300,13 @@ export class ReportService {
       });
 
       let reportMediaFileIds: string[] = [];
-      if (imageUrls.length > 0) {
-        const mediaRows = imageUrls.map((imageUrl) => ({
-          id: randomUUID(),
-          url: imageUrl,
-          type: MediaResourceType.REPORT,
-          createdBy: userId,
-          updatedBy: userId,
-        }));
-
+      if (mediaRows.length > 0) {
         await tx.media.createMany({ data: mediaRows });
 
         const reportMediaRows = mediaRows.map((m) => ({
           id: randomUUID(),
           reportId: createdReport.id,
-          mediaId: m.id,
+          mediaId: m.id!,
           uploadedBy: userId,
           createdBy: userId,
           updatedBy: userId,
@@ -416,6 +467,7 @@ export class ReportService {
         url: row.media.url,
         type: row.media.type,
         createdAt: row.createdAt,
+        ...toMediaMetadataResponse(row.media),
       });
     }
     return out;
@@ -494,19 +546,53 @@ export class ReportService {
 
   private toReportDetailFromLoaded(
     report: ReportWithMediaFiles & { distance?: number },
-    mediaUrlMap: Map<string, string>,
+    mediaMap: Map<
+      string,
+      {
+        url: string;
+        type: string;
+        mimeType: string | null;
+        fileSize: bigint | null;
+        width: number | null;
+        height: number | null;
+        capturedAt: Date | null;
+        latitude: number | null;
+        longitude: number | null;
+        cameraMake: string | null;
+        cameraModel: string | null;
+        metadata: unknown;
+      }
+    >,
     aiAnalysisUrlMap: Map<string, string>,
   ): ReportDetailResponse {
     return {
       ...toReportResponse(report, report.distance),
-      mediaFiles: report.reportMediaFiles.map((mf) => ({
-        id: mf.id,
-        mediaId: mf.mediaId,
-        url: mediaUrlMap.get(mf.mediaId) ?? null,
-        ai_analysis_url: aiAnalysisUrlMap.get(mf.id) ?? null,
-        uploadedBy: mf.uploadedBy,
-        createdAt: mf.createdAt,
-      })),
+      mediaFiles: report.reportMediaFiles.map((mf) => {
+        const media = mediaMap.get(mf.mediaId);
+        return {
+          id: mf.id,
+          mediaId: mf.mediaId,
+          url: media?.url ?? null,
+          type: media?.type ?? null,
+          ai_analysis_url: aiAnalysisUrlMap.get(mf.id) ?? null,
+          uploadedBy: mf.uploadedBy,
+          createdAt: mf.createdAt,
+          ...(media
+            ? toMediaMetadataResponse(media)
+            : {
+                mimeType: null,
+                fileSize: null,
+                width: null,
+                height: null,
+                capturedAt: null,
+                latitude: null,
+                longitude: null,
+                cameraMake: null,
+                cameraModel: null,
+                metadata: null,
+              }),
+        };
+      }),
       handledBy: null,
     };
   }
@@ -523,13 +609,13 @@ export class ReportService {
       }
     }
 
-    const [mediaUrlMap, aiAnalysisUrlMap] = await Promise.all([
-      this.getMediaUrlMap([...new Set(mediaIds)]),
+    const [mediaMap, aiAnalysisUrlMap] = await Promise.all([
+      this.getMediaMap([...new Set(mediaIds)]),
       this.getAiAnalysisUrlMap([...new Set(reportMediaFileIds)]),
     ]);
 
     const details = reports.map((r) =>
-      this.toReportDetailFromLoaded(r, mediaUrlMap, aiAnalysisUrlMap),
+      this.toReportDetailFromLoaded(r, mediaMap, aiAnalysisUrlMap),
     );
     return this.attachHandledBy(reports, details);
   }
@@ -703,18 +789,23 @@ export class ReportService {
       );
     }
 
+    // Download + EXIF extract before the DB transaction.
+    const preparedMedia = await Promise.all(
+      imageUrls.map((imageUrl, index) =>
+        prepareMediaFromUrl({
+          url: imageUrl,
+          type: MediaResourceType.REPORT,
+          userId,
+          capture: request.mediaCaptures?.[index] ?? null,
+        }),
+      ),
+    );
+
     const reportMediaFileIds = await prisma.$transaction(async (tx) => {
       const createdIds: string[] = [];
 
-      for (const imageUrl of imageUrls) {
-        const media = await tx.media.create({
-          data: {
-            url: imageUrl,
-            type: MediaResourceType.REPORT,
-            createdBy: userId,
-            updatedBy: userId,
-          },
-        });
+      for (const mediaData of preparedMedia) {
+        const media = await tx.media.create({ data: mediaData });
 
         const reportMediaFile = await tx.reportMediaFile.create({
           data: {
@@ -948,9 +1039,27 @@ export class ReportService {
     });
   }
 
-  private async getMediaUrlMap(
+  private async getMediaMap(
     mediaIds: string[],
-  ): Promise<Map<string, string>> {
+  ): Promise<
+    Map<
+      string,
+      {
+        url: string;
+        type: string;
+        mimeType: string | null;
+        fileSize: bigint | null;
+        width: number | null;
+        height: number | null;
+        capturedAt: Date | null;
+        latitude: number | null;
+        longitude: number | null;
+        cameraMake: string | null;
+        cameraModel: string | null;
+        metadata: unknown;
+      }
+    >
+  > {
     if (mediaIds.length === 0) {
       return new Map();
     }
@@ -963,10 +1072,39 @@ export class ReportService {
       select: {
         id: true,
         url: true,
+        type: true,
+        mimeType: true,
+        fileSize: true,
+        width: true,
+        height: true,
+        capturedAt: true,
+        latitude: true,
+        longitude: true,
+        cameraMake: true,
+        cameraModel: true,
+        metadata: true,
       },
     });
 
-    return new Map(mediaRecords.map((item) => [item.id, item.url]));
+    return new Map(
+      mediaRecords.map((item) => [
+        item.id,
+        {
+          url: item.url,
+          type: item.type,
+          mimeType: item.mimeType,
+          fileSize: item.fileSize,
+          width: item.width,
+          height: item.height,
+          capturedAt: item.capturedAt,
+          latitude: item.latitude,
+          longitude: item.longitude,
+          cameraMake: item.cameraMake,
+          cameraModel: item.cameraModel,
+          metadata: item.metadata,
+        },
+      ]),
+    );
   }
 
   async deleteReport(id: string, userId: string, role?: string): Promise<void> {

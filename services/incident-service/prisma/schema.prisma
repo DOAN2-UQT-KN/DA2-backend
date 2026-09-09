@@ -115,10 +115,29 @@ model Campaign {
 }
 
 model Media {
-  id   String @id @default(uuid()) @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
+
+  // FILE
   url  String
   type String @db.VarChar(50)
 
+  // FILE METADATA
+  mimeType String? @map("mime_type") @db.VarChar(100)
+  fileSize BigInt? @map("file_size")
+  width    Int?
+  height   Int?
+
+  // CAPTURE METADATA
+  capturedAt  DateTime? @map("captured_at")
+  latitude    Float?
+  longitude   Float?
+  cameraMake  String?   @map("camera_make") @db.VarChar(100)
+  cameraModel String?   @map("camera_model") @db.VarChar(100)
+
+  // RAW METADATA
+  metadata Json?
+
+  // AUDIT
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
 
@@ -126,7 +145,10 @@ model Media {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  // RELATIONS
   campaignTaskResultFiles CampaignTaskResultFile[]
+  campaignResultFiles     CampaignResultFile[]
+  reportMediaFiles        ReportMediaFile[]
 
   @@index([type])
   @@index([deletedAt])
@@ -150,6 +172,7 @@ model ReportMediaFile {
 
   // Relations
   report Report? @relation(fields: [reportId], references: [id])
+  media  Media   @relation(fields: [mediaId], references: [id])
 
   @@index([reportId])
   @@index([mediaId])
@@ -369,6 +392,7 @@ model CampaignResultFile {
 
   // Relations
   campaignResult CampaignResult @relation(fields: [campaignResultId], references: [id])
+  media          Media          @relation(fields: [mediaId], references: [id])
 
   @@index([campaignResultId])
   @@index([mediaId])

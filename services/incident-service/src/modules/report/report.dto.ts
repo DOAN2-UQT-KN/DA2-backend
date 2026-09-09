@@ -1,6 +1,13 @@
 import type { OrganizationOwnerResponse } from "../organization/organization.dto";
 import type { ResourceVoteSummary } from "../vote/vote.dto";
 
+/** Optional capture context aligned by index with `imageUrls`. */
+export interface MediaCaptureInput {
+  capturedAt?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
 // Request DTOs
 export interface CreateReportRequest {
   title: string;
@@ -16,6 +23,8 @@ export interface CreateReportRequest {
   /** Optional human-readable address for the report location. */
   detailAddress?: string;
   imageUrls: string[]; // Array of image URLs
+  /** Optional; `mediaCaptures[i]` maps to `imageUrls[i]`. */
+  mediaCaptures?: MediaCaptureInput[];
 }
 
 export interface UpdateReportRequest {
@@ -34,6 +43,8 @@ export interface UpdateReportRequest {
 
 export interface AddReportImagesRequest {
   imageUrls: string[];
+  /** Optional; `mediaCaptures[i]` maps to `imageUrls[i]`. */
+  mediaCaptures?: MediaCaptureInput[];
 }
 
 /** Body for PUT /api/v1/reports/:id/ban (admin). */
@@ -42,8 +53,23 @@ export interface AdminBanReportBody {
   rejectReason: string;
 }
 
+/** Shared media metadata fields returned on report media responses. */
+export interface MediaMetadataResponse {
+  mimeType: string | null;
+  /** BigInt serialized as string for JSON safety. */
+  fileSize: string | null;
+  width: number | null;
+  height: number | null;
+  capturedAt: Date | null;
+  latitude: number | null;
+  longitude: number | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  metadata: unknown | null;
+}
+
 /** One row from GET /api/v1/reports/media-files/by-ids (snake_case in HTTP response). */
-export interface ReportMediaFileByIdResponse {
+export interface ReportMediaFileByIdResponse extends MediaMetadataResponse {
   id: string;
   reportId: string | null;
   mediaId: string;
@@ -127,10 +153,11 @@ export interface ReportDetailResponse extends ReportResponse {
   handledBy: ReportHandledByResponse | null;
 }
 
-export interface ReportMediaFileResponse {
+export interface ReportMediaFileResponse extends MediaMetadataResponse {
   id: string;
   mediaId: string;
   url: string | null;
+  type: string | null;
   ai_analysis_url: string | null;
   uploadedBy: string | null;
   createdAt: Date;
