@@ -277,6 +277,7 @@ export class ReportRepository {
                 reject_reason as "rejectReason",
                 ai_verified as "aiVerified",
                 ai_recommendation as "aiRecommendation",
+                duplicate_verification as "duplicateVerification",
                 created_at as "createdAt",
                 updated_at as "updatedAt",
                 deleted_at as "deletedAt",

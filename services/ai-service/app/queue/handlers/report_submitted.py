@@ -6,6 +6,7 @@ import logging
 
 from app.queue.envelope import BackgroundJobEnvelope
 from app.repositories.media_content_hash import upsert_computed_hashes_sync
+from app.clients.incident_internal import patch_duplicate_verification_sync
 from app.verification.contracts import ReportSubmittedPayload
 from app.verification.duplicate import CONTEXT_MEDIA_HASHES
 from app.verification.pipeline import VerificationPipeline
@@ -41,6 +42,17 @@ def handle_report_submitted(envelope: BackgroundJobEnvelope) -> None:
                 payload.report_id,
             )
             raise
+
+    try:
+        patch_duplicate_verification_sync(
+            payload.report_id, result.to_incident_payload()
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Failed to write duplicate verification report_id=%s",
+            payload.report_id,
+        )
+        raise
 
     logger.info(
         "Handled REPORT_SUBMITTED report_id=%s job_id=%s result=%s",

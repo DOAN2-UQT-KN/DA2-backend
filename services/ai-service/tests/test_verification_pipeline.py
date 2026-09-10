@@ -118,7 +118,9 @@ def test_handle_report_submitted() -> None:
         "app.verification.duplicate.prepare_media_hashes", return_value=[]
     ), patch(
         "app.queue.handlers.report_submitted.upsert_computed_hashes_sync"
-    ):
+    ), patch(
+        "app.queue.handlers.report_submitted.patch_duplicate_verification_sync"
+    ) as patch_mock:
         envelope = BackgroundJobEnvelope(
             job_id="job-1",
             job_type="REPORT_SUBMITTED",
@@ -129,6 +131,15 @@ def test_handle_report_submitted() -> None:
             },
         )
         handle_report_submitted(envelope)
+        patch_mock.assert_called_once()
+        report_id, payload = patch_mock.call_args[0]
+        assert report_id == "r1"
+        assert "report_id" not in payload
+        assert payload == {
+            "duplicate_report_id": None,
+            "reasons": [],
+            "matches": [],
+        }
 
 
 def test_dispatch_unknown_job_type() -> None:

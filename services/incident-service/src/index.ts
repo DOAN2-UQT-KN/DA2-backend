@@ -19,6 +19,7 @@ import {
   camelCaseRequestBody,
   snakeCaseResponseBody,
 } from "./middleware/case-transform.middleware";
+import internalRoutes from "./internal/internal.routes";
 import "./worker";
 
 const app: Application = express();
@@ -76,6 +77,7 @@ app.use("/api/v1/incident/votes", voteRoutes);
 app.use("/incident/saved-resources", savedResourceRoutes);
 app.use("/api/v1/organizations", organizationRoutes);
 app.use("/api/v1/admin/media", adminMediaRoutes);
+app.use("/internal/v1", internalRoutes);
 
 // Error handling
 app.use(errorHandler);

@@ -7,6 +7,7 @@ from typing import Optional
 from unittest.mock import patch
 
 from app.verification.contracts import (
+    DuplicateMediaMatch,
     DuplicateReportResult,
     ReasonCode,
     ReportSubmittedPayload,
@@ -238,3 +239,21 @@ def test_exact_hash_no_media_returns_none() -> None:
         "app.verification.duplicate.prepare_media_hashes", return_value=[]
     ):
         assert exact_hash(payload, {}) is None
+
+
+def test_incident_payload_omits_report_id() -> None:
+    result = DuplicateReportResult(
+        report_id="r-new",
+        duplicate_report_id="r-old",
+        reasons=[ReasonCode.EXACT_HASH_MATCH.value],
+        matches=[
+            DuplicateMediaMatch(media_id="m1", duplicate_media_id="m-old")
+        ],
+    )
+    payload = result.to_incident_payload()
+    assert "report_id" not in payload
+    assert payload == {
+        "duplicate_report_id": "r-old",
+        "reasons": ["EXACT_HASH_MATCH"],
+        "matches": [{"media_id": "m1", "duplicate_media_id": "m-old"}],
+    }

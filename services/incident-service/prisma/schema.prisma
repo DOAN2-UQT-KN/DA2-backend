@@ -45,6 +45,12 @@ model Report {
   /** LLM recommendation after image/object analysis. */
   aiRecommendation String? @map("ai_recommendation")
 
+  /**
+   * Duplicate verification result from ai-service (SHA-256 / pHash).
+   * Null until REPORT_SUBMITTED pipeline writes back.
+   */
+  duplicateVerification Json? @map("duplicate_verification")
+
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
 

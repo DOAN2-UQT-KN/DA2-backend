@@ -1,5 +1,5 @@
 import { reportRepository, ReportWithMediaFiles } from "./report.repository";
-import { toReportResponse } from "./report.entity";
+import { toReportResponse, toDuplicateVerificationJson } from "./report.entity";
 import {
   CreateReportRequest,
   UpdateReportRequest,
@@ -12,6 +12,7 @@ import {
   PaginatedReportsResponse,
   ReportBackgroundJobsStatusResponse,
   ReportMediaFileByIdResponse,
+  DuplicateVerification,
 } from "./report.dto";
 import { reportMediaRepository } from "./report_media.repository";
 import {
@@ -21,7 +22,7 @@ import {
   VoteResourceType,
 } from "../../constants/status.enum";
 import prisma from "../../config/prisma.client";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import {
   ReportJobType,
@@ -392,6 +393,19 @@ export class ReportService {
       return null;
     }
     return this.withReportVote(toReportResponse(report), viewerUserId);
+  }
+
+  async saveDuplicateVerification(
+    reportId: string,
+    verification: DuplicateVerification,
+  ): Promise<void> {
+    const existing = await reportRepository.findById(reportId);
+    if (!existing) {
+      throw new HttpError(HTTP_STATUS.REPORT_NOT_FOUND);
+    }
+    await reportRepository.update(reportId, {
+      duplicateVerification: toDuplicateVerificationJson(verification),
+    });
   }
 
   async getReportBackgroundJobsStatus(
@@ -840,6 +854,7 @@ export class ReportService {
     await reportRepository.update(reportId, {
       aiVerified: false,
       status: ReportStatus._STATUS_PENDING,
+      duplicateVerification: Prisma.DbNull,
     });
 
     backgroundJobDispatcher

@@ -180,6 +180,14 @@ class DuplicateReportResult:
             "matches": [m.to_dict() for m in self.matches],
         }
 
+    def to_incident_payload(self) -> dict[str, Any]:
+        """Body for incident PATCH — omit report_id (path param)."""
+        return {
+            "duplicate_report_id": self.duplicate_report_id,
+            "reasons": list(self.reasons),
+            "matches": [m.to_dict() for m in self.matches],
+        }
+
 
 @dataclass
 class ReportDuplicate:

@@ -99,6 +99,18 @@ export type ReportSearchWithScope = ReportSearchQuery & {
   scopedUserId?: string;
 };
 
+export interface DuplicateMediaMatch {
+  mediaId: string;
+  duplicateMediaId: string;
+}
+
+/** Null on GET until ai-service writes back after REPORT_SUBMITTED. */
+export interface DuplicateVerification {
+  duplicateReportId: string | null;
+  reasons: string[];
+  matches: DuplicateMediaMatch[];
+}
+
 // Response DTOs
 export interface ReportResponse {
   id: string;
@@ -127,6 +139,11 @@ export interface ReportResponse {
   aiVerified: boolean;
   /** LLM recommendation after image/object analysis (nullable until analysis completes). */
   aiRecommendation?: string | null;
+  /**
+   * Duplicate verification (SHA-256 / pHash). Null until the AI worker writes back.
+   * After a check with no hit: duplicateReportId is null and reasons/matches are empty.
+   */
+  duplicateVerification: DuplicateVerification | null;
   createdAt: Date;
   updatedAt: Date;
   distance?: number; // Distance in meters (when searching with location)
