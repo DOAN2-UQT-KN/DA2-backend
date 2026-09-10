@@ -5,26 +5,24 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from app.verification.authenticity import run_authenticity
 from app.verification.contracts import (
+    DuplicateReportResult,
     ReportSubmittedPayload,
-    RiskAssessment,
 )
 from app.verification.duplicate import run_duplicate_cascade
-from app.verification.risk import RuleBasedRiskEngine
 
 logger = logging.getLogger("ai-service.verification")
 
 
 class VerificationPipeline:
     """
-    Orchestrates Duplicate → Authenticity → Risk.
+    Duplicate (SHA-256 → pHash) then return.
 
-    Detector/engine bodies are empty stubs; this class only wires the call order.
+    Authenticity + risk engines — implement later.
     """
 
     def __init__(self, risk_engine: Optional[Any] = None) -> None:
-        self._risk_engine = risk_engine or RuleBasedRiskEngine()
+        _ = risk_engine
 
     def run(
         self,
@@ -32,7 +30,7 @@ class VerificationPipeline:
         *,
         context: Optional[dict[str, Any]] = None,
         job_id: Optional[str] = None,
-    ) -> RiskAssessment:
+    ) -> DuplicateReportResult:
         ctx = context or {}
         logger.info(
             "VerificationPipeline start report_id=%s job_id=%s media_count=%s",
@@ -41,13 +39,12 @@ class VerificationPipeline:
             len(payload.report_media_file_ids),
         )
 
-        duplicate = run_duplicate_cascade(payload, ctx)
-        authenticity = run_authenticity(payload, ctx)
-        assessment = self._risk_engine.assess(duplicate, authenticity)
+        result = run_duplicate_cascade(payload, ctx)
+        # run_authenticity / risk_engine.assess — implement later
 
         logger.info(
-            "VerificationPipeline done report_id=%s assessment=%s",
+            "VerificationPipeline done report_id=%s result=%s",
             payload.report_id,
-            assessment.to_dict(),
+            result.to_dict(),
         )
-        return assessment
+        return result

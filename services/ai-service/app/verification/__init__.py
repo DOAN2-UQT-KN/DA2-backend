@@ -2,6 +2,8 @@
 
 from app.verification.contracts import (
     AuthenticityResult,
+    DuplicateMediaMatch,
+    DuplicateReportResult,
     ReportDuplicate,
     ReportSubmittedPayload,
     RiskAssessment,
@@ -11,6 +13,8 @@ from app.verification.pipeline import VerificationPipeline
 
 __all__ = [
     "AuthenticityResult",
+    "DuplicateMediaMatch",
+    "DuplicateReportResult",
     "ReportDuplicate",
     "ReportSubmittedPayload",
     "RiskAssessment",

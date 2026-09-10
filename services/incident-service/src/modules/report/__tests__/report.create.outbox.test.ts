@@ -36,6 +36,28 @@ jest.mock("../../../outbox/outbox.writer", () => ({
 jest.mock("../../media/media-from-url.service", () => ({
   prepareMediaFromUrl: (...args: unknown[]) =>
     prepareMediaFromUrlMock(...args),
+  toReportSubmittedMediaSnapshot: (input: {
+    reportMediaFileId: string;
+    mediaId: string;
+    uploadedBy: string | null;
+    media: { id?: string; url: string; type: string };
+  }) => ({
+    reportMediaFileId: input.reportMediaFileId,
+    mediaId: input.mediaId,
+    uploadedBy: input.uploadedBy,
+    url: input.media.url,
+    type: input.media.type,
+    mimeType: null,
+    fileSize: null,
+    width: null,
+    height: null,
+    capturedAt: null,
+    latitude: null,
+    longitude: null,
+    cameraMake: null,
+    cameraModel: null,
+    metadata: null,
+  }),
 }));
 
 jest.mock("../report.entity", () => ({
@@ -112,6 +134,14 @@ describe("createReport (outbox producer)", () => {
     });
     expect(Array.isArray(event.payload.reportMediaFileIds)).toBe(true);
     expect(event.payload.reportMediaFileIds).toHaveLength(1);
+    expect(Array.isArray(event.payload.media)).toBe(true);
+    expect(event.payload.media).toHaveLength(1);
+    expect(event.payload.media[0]).toMatchObject({
+      url: "https://cdn.example/a.jpg",
+      type: expect.any(String),
+      mediaId: expect.any(String),
+      reportMediaFileId: expect.any(String),
+    });
   });
 
   it("vẫn enqueue ANALYZE_REPORT sau commit (path song song không bị gỡ)", async () => {

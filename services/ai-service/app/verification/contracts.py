@@ -1,7 +1,4 @@
-"""Verification pipeline contracts (DTO shapes / reason codes / flag bands).
-
-Algorithms are deferred; these types document the production contract.
-"""
+"""Verification pipeline contracts (DTO shapes / reason codes / flag bands)."""
 
 from __future__ import annotations
 
@@ -32,10 +29,94 @@ class ReasonCode(str, Enum):
 
 
 @dataclass
+class ReportSubmittedMedia:
+    """Full media snapshot from REPORT_SUBMITTED (incident Media row)."""
+
+    report_media_file_id: str
+    media_id: str
+    url: str
+    type: str
+    uploaded_by: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_size: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    captured_at: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    camera_make: Optional[str] = None
+    camera_model: Optional[str] = None
+    metadata: Optional[Any] = None
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> Optional["ReportSubmittedMedia"]:
+        report_media_file_id = raw.get("reportMediaFileId")
+        media_id = raw.get("mediaId")
+        url = raw.get("url")
+        media_type = raw.get("type")
+        if not isinstance(report_media_file_id, str) or not report_media_file_id:
+            return None
+        if not isinstance(media_id, str) or not media_id:
+            return None
+        if not isinstance(url, str) or not url.strip():
+            return None
+        if not isinstance(media_type, str) or not media_type:
+            media_type = "UNKNOWN"
+
+        def _opt_str(key: str) -> Optional[str]:
+            value = raw.get(key)
+            return value if isinstance(value, str) and value else None
+
+        def _opt_float(key: str) -> Optional[float]:
+            value = raw.get(key)
+            if isinstance(value, bool):
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            return None
+
+        def _opt_int(key: str) -> Optional[int]:
+            value = raw.get(key)
+            if isinstance(value, bool):
+                return None
+            if isinstance(value, int):
+                return value
+            return None
+
+        file_size_raw = raw.get("fileSize")
+        file_size: Optional[str]
+        if file_size_raw is None:
+            file_size = None
+        elif isinstance(file_size_raw, str):
+            file_size = file_size_raw or None
+        else:
+            file_size = str(file_size_raw)
+
+        return cls(
+            report_media_file_id=report_media_file_id,
+            media_id=media_id,
+            url=url.strip(),
+            type=media_type,
+            uploaded_by=_opt_str("uploadedBy"),
+            mime_type=_opt_str("mimeType"),
+            file_size=file_size,
+            width=_opt_int("width"),
+            height=_opt_int("height"),
+            captured_at=_opt_str("capturedAt"),
+            latitude=_opt_float("latitude"),
+            longitude=_opt_float("longitude"),
+            camera_make=_opt_str("cameraMake"),
+            camera_model=_opt_str("cameraModel"),
+            metadata=raw.get("metadata"),
+        )
+
+
+@dataclass
 class ReportSubmittedPayload:
     report_id: str
     user_id: str
     report_media_file_ids: list[str]
+    media: list[ReportSubmittedMedia] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ReportSubmittedPayload":
@@ -49,11 +130,55 @@ class ReportSubmittedPayload:
         if not isinstance(media_ids, list):
             raise ValueError("Invalid REPORT_SUBMITTED payload: reportMediaFileIds")
         cleaned = [m for m in media_ids if isinstance(m, str) and m]
+
+        media_items: list[ReportSubmittedMedia] = []
+        raw_media = raw.get("media")
+        if isinstance(raw_media, list):
+            for item in raw_media:
+                if isinstance(item, dict):
+                    parsed = ReportSubmittedMedia.from_dict(item)
+                    if parsed is not None:
+                        media_items.append(parsed)
+
+        if not cleaned and media_items:
+            cleaned = [m.report_media_file_id for m in media_items]
+
         return cls(
             report_id=report_id,
             user_id=user_id,
             report_media_file_ids=cleaned,
+            media=media_items,
         )
+
+
+@dataclass
+class DuplicateMediaMatch:
+    media_id: str  # Media.id vừa gửi
+    duplicate_media_id: str  # Media.id cũ bị trùng
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "media_id": self.media_id,
+            "duplicate_media_id": self.duplicate_media_id,
+        }
+
+
+@dataclass
+class DuplicateReportResult:
+    """Report-level duplicate result after SHA-256 / pHash."""
+
+    report_id: str
+    duplicate_report_id: Optional[str] = None
+    reasons: list[str] = field(default_factory=list)
+    matches: list[DuplicateMediaMatch] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "report_id": self.report_id,
+            "duplicate_report_id": self.duplicate_report_id,
+            "reasons": list(self.reasons),
+            "matches": [m.to_dict() for m in self.matches],
+        }
 
 
 @dataclass

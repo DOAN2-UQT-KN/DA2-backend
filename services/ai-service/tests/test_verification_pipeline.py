@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from app.queue.envelope import BackgroundJobEnvelope
 from app.queue.handlers import dispatch
 from app.queue.handlers.report_submitted import handle_report_submitted
-from app.verification.contracts import ReportSubmittedPayload, RiskAssessment
+from app.verification.contracts import DuplicateReportResult, ReportSubmittedPayload, RiskAssessment
 from app.verification.duplicate import (
     embedding_similarity,
     exact_hash,
     feature_matching,
+    phash_similarity,
     run_duplicate_cascade,
 )
 from app.verification.authenticity import (
@@ -43,12 +46,28 @@ def test_payload_rejects_invalid() -> None:
         pass
 
 
-def test_duplicate_stubs_return_none() -> None:
+def test_duplicate_cascade_empty_when_no_hashes() -> None:
     payload = ReportSubmittedPayload("r1", "u1", ["m1"])
-    assert exact_hash(payload) is None
-    assert embedding_similarity(payload) is None
-    assert feature_matching(payload) is None
-    assert run_duplicate_cascade(payload) is None
+    with patch(
+        "app.verification.duplicate.prepare_media_hashes", return_value=[]
+    ), patch(
+        "app.verification.duplicate.hash_repo.find_sha256_match_sync",
+        return_value=None,
+    ), patch(
+        "app.verification.duplicate.hash_repo.list_phash_corpus_sync",
+        return_value=[],
+    ) as ph_mock:
+        assert exact_hash(payload, {}) is None
+        assert phash_similarity(payload, {}) is None
+        assert embedding_similarity(payload) is None
+        assert feature_matching(payload) is None
+        result = run_duplicate_cascade(payload, {})
+        assert isinstance(result, DuplicateReportResult)
+        assert result.report_id == "r1"
+        assert result.duplicate_report_id is None
+        assert result.reasons == []
+        assert result.matches == []
+        ph_mock.assert_not_called()
 
 
 def test_authenticity_stubs_empty() -> None:
@@ -67,26 +86,49 @@ def test_risk_stubs_empty() -> None:
     assert assessment.to_dict()["flag"] is None
 
 
-def test_pipeline_wires_stubs() -> None:
-    result = VerificationPipeline(risk_engine=RuleBasedRiskEngine()).run(
-        ReportSubmittedPayload("r1", "u1", ["m1"]),
-        job_id="job-1",
-    )
-    assert result.risk_score is None
-    assert result.to_dict()["details"]["duplicate_score"] is None
+def test_pipeline_returns_duplicate_result_skips_authenticity_risk() -> None:
+    with patch(
+        "app.verification.duplicate.prepare_media_hashes", return_value=[]
+    ), patch(
+        "app.verification.authenticity.run_authenticity"
+    ) as auth_mock, patch(
+        "app.verification.risk.assess"
+    ) as risk_mock:
+        result = VerificationPipeline(risk_engine=RuleBasedRiskEngine()).run(
+            ReportSubmittedPayload("r1", "u1", ["m1"]),
+            job_id="job-1",
+        )
+    assert isinstance(result, DuplicateReportResult)
+    assert result.report_id == "r1"
+    assert result.duplicate_report_id is None
+    assert result.reasons == []
+    assert result.matches == []
+    assert result.to_dict() == {
+        "report_id": "r1",
+        "duplicate_report_id": None,
+        "reasons": [],
+        "matches": [],
+    }
+    auth_mock.assert_not_called()
+    risk_mock.assert_not_called()
 
 
 def test_handle_report_submitted() -> None:
-    envelope = BackgroundJobEnvelope(
-        job_id="job-1",
-        job_type="REPORT_SUBMITTED",
-        payload={
-            "reportId": "r1",
-            "userId": "u1",
-            "reportMediaFileIds": [],
-        },
-    )
-    handle_report_submitted(envelope)
+    with patch(
+        "app.verification.duplicate.prepare_media_hashes", return_value=[]
+    ), patch(
+        "app.queue.handlers.report_submitted.upsert_computed_hashes_sync"
+    ):
+        envelope = BackgroundJobEnvelope(
+            job_id="job-1",
+            job_type="REPORT_SUBMITTED",
+            payload={
+                "reportId": "r1",
+                "userId": "u1",
+                "reportMediaFileIds": [],
+            },
+        )
+        handle_report_submitted(envelope)
 
 
 def test_dispatch_unknown_job_type() -> None:

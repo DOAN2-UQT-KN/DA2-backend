@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 
 from app.queue.envelope import BackgroundJobEnvelope
+from app.repositories.media_content_hash import upsert_computed_hashes_sync
 from app.verification.contracts import ReportSubmittedPayload
+from app.verification.duplicate import CONTEXT_MEDIA_HASHES
 from app.verification.pipeline import VerificationPipeline
 
 logger = logging.getLogger("ai-service.queue.report_submitted")
@@ -20,10 +22,29 @@ def handle_report_submitted(envelope: BackgroundJobEnvelope) -> None:
         raise ValueError(f"Unexpected jobType: {envelope.job_type}")
 
     payload = ReportSubmittedPayload.from_dict(envelope.payload)
-    assessment = _pipeline.run(payload, job_id=envelope.job_id)
+    context: dict = {}
+    result = _pipeline.run(
+        payload, context=context, job_id=envelope.job_id
+    )
+
+    records = context.get(CONTEXT_MEDIA_HASHES) or []
+    if records:
+        try:
+            upsert_computed_hashes_sync(
+                report_id=payload.report_id,
+                user_id=payload.user_id,
+                records=records,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to upsert media content hashes report_id=%s",
+                payload.report_id,
+            )
+            raise
+
     logger.info(
-        "Handled REPORT_SUBMITTED report_id=%s job_id=%s assessment=%s",
+        "Handled REPORT_SUBMITTED report_id=%s job_id=%s result=%s",
         payload.report_id,
         envelope.job_id,
-        assessment.to_dict(),
+        result.to_dict(),
     )

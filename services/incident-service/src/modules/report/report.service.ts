@@ -21,6 +21,7 @@ import {
   VoteResourceType,
 } from "../../constants/status.enum";
 import prisma from "../../config/prisma.client";
+import type { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import {
   ReportJobType,
@@ -48,8 +49,8 @@ import { emitOutbox } from "../../outbox/outbox.writer";
 import { OutboxEventType } from "../../outbox/outbox.types";
 import {
   prepareMediaFromUrl,
+  toReportSubmittedMediaSnapshot,
 } from "../media/media-from-url.service";
-import { processImageHashes } from "../media/media-hash.service";
 
 /**
  * Serialize Media metadata for JSON responses (`fileSize` as string).
@@ -259,7 +260,7 @@ export class ReportService {
       request.description?.trim() ||
       "";
 
-    // Download + EXIF extract (+ hash stubs later) before opening the DB transaction.
+    // Download + EXIF extract before opening the DB transaction (network I/O).
     const preparedMedia =
       imageUrls.length > 0
         ? await Promise.all(
@@ -301,19 +302,10 @@ export class ReportService {
       });
 
       let reportMediaFileIds: string[] = [];
+      let mediaSnapshots: Record<string, unknown>[] = [];
       if (preparedMedia.length > 0) {
         const mediaRows = preparedMedia.map((p) => p.media);
         await tx.media.createMany({ data: mediaRows });
-
-        for (const prepared of preparedMedia) {
-          if (prepared.buffer && prepared.media.id) {
-            await processImageHashes(
-              prepared.media.id,
-              prepared.buffer,
-              tx,
-            );
-          }
-        }
 
         const reportMediaRows = mediaRows.map((m) => ({
           id: randomUUID(),
@@ -327,6 +319,14 @@ export class ReportService {
         await tx.reportMediaFile.createMany({ data: reportMediaRows });
 
         reportMediaFileIds = reportMediaRows.map((r) => r.id);
+        mediaSnapshots = reportMediaRows.map((rm, index) =>
+          toReportSubmittedMediaSnapshot({
+            reportMediaFileId: rm.id,
+            mediaId: rm.mediaId,
+            uploadedBy: userId,
+            media: mediaRows[index]!,
+          }),
+        );
       }
 
       await emitOutbox(tx, {
@@ -337,7 +337,8 @@ export class ReportService {
           reportId: createdReport.id,
           userId,
           reportMediaFileIds,
-        },
+          media: mediaSnapshots,
+        } as Prisma.InputJsonValue,
         dedupKey: `${OutboxEventType.REPORT_SUBMITTED}:${createdReport.id}`,
       });
 
@@ -818,9 +819,6 @@ export class ReportService {
 
       for (const prepared of preparedMedia) {
         const media = await tx.media.create({ data: prepared.media });
-        if (prepared.buffer) {
-          await processImageHashes(media.id, prepared.buffer, tx);
-        }
 
         const reportMediaFile = await tx.reportMediaFile.create({
           data: {

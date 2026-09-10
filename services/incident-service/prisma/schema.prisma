@@ -149,25 +149,10 @@ model Media {
   campaignTaskResultFiles CampaignTaskResultFile[]
   campaignResultFiles     CampaignResultFile[]
   reportMediaFiles        ReportMediaFile[]
-  hashes                  MediaHash[]
 
   @@index([type])
   @@index([deletedAt])
   @@map("media")
-}
-
-model MediaHash {
-  id        String   @id @default(uuid()) @db.Uuid
-  mediaId   String   @map("media_id") @db.Uuid
-  algorithm String   @db.VarChar(50)
-  hash      String   @db.VarChar(128)
-  createdAt DateTime @default(now()) @map("created_at")
-
-  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-
-  @@unique([mediaId, algorithm])
-  @@index([algorithm, hash])
-  @@map("media_hashes")
 }
 
 model ReportMediaFile {

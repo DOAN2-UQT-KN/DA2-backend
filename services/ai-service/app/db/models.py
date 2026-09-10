@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional, Union
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Index, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -79,3 +79,30 @@ class ChatMessage(Base):
     )
 
     conversation: Mapped["ChatConversation"] = relationship(back_populates="messages")
+
+
+class AiMediaContentHash(Base):
+    """Corpus of image content hashes for duplicate detection (SHA256 / PHASH)."""
+
+    __tablename__ = "ai_media_content_hashes"
+    __table_args__ = (
+        UniqueConstraint("media_id", "algorithm", name="uq_ai_media_hash_media_algo"),
+        Index("ix_ai_media_content_hashes_algorithm_hash", "algorithm", "hash"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    report_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    report_media_file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), index=True
+    )
+    media_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    algorithm: Mapped[str] = mapped_column(String(50), nullable=False)
+    hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

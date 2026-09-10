@@ -5,7 +5,6 @@ import {
   extractMediaFieldsFromBuffer,
   type ExtractedMediaFields,
 } from "./media-extract.util";
-import { processImageHashes } from "./media-hash.service";
 
 const DOWNLOAD_TIMEOUT_MS = 15_000;
 const MAX_DOWNLOAD_BYTES = 15 * 1024 * 1024;
@@ -24,7 +23,7 @@ export type CreateMediaFromUrlInput = {
   id?: string;
 };
 
-/** Media create payload plus downloaded bytes for the hash step (null if download failed). */
+/** Media create payload plus downloaded bytes used for EXIF extract. */
 export type PreparedMediaFromUrl = {
   media: Prisma.MediaCreateManyInput;
   buffer: Buffer | null;
@@ -120,7 +119,6 @@ export function buildMediaCreateData(
 
 /**
  * Prepare media row data for createMany: download+extract outside the DB tx.
- * Keeps the buffer so SHA256/pHash can run without a second download.
  */
 export async function prepareMediaFromUrl(
   input: CreateMediaFromUrlInput,
@@ -133,8 +131,8 @@ export async function prepareMediaFromUrl(
 }
 
 /**
- * Create a single Media row from a hosted URL (download + extract + hash stubs).
- * Never fails the create when extract/hash fail.
+ * Create a single Media row from a hosted URL (download + extract).
+ * Never fails the create when extract fails.
  */
 export async function createMediaFromUrl(
   input: CreateMediaFromUrlInput,
@@ -142,9 +140,38 @@ export async function createMediaFromUrl(
 ) {
   const db = tx ?? prisma;
   const prepared = await prepareMediaFromUrl(input);
-  const media = await db.media.create({ data: prepared.media });
-  if (prepared.buffer) {
-    await processImageHashes(media.id, prepared.buffer, db);
-  }
-  return media;
+  return db.media.create({ data: prepared.media });
+}
+
+/** Snapshot of a report media file for REPORT_SUBMITTED outbox payload. */
+export function toReportSubmittedMediaSnapshot(input: {
+  reportMediaFileId: string;
+  mediaId: string;
+  uploadedBy: string | null;
+  media: Prisma.MediaCreateManyInput;
+}): Record<string, unknown> {
+  const m = input.media;
+  const capturedAt = m.capturedAt;
+  return {
+    reportMediaFileId: input.reportMediaFileId,
+    mediaId: input.mediaId,
+    uploadedBy: input.uploadedBy,
+    url: m.url,
+    type: m.type,
+    mimeType: m.mimeType ?? null,
+    fileSize: m.fileSize != null ? String(m.fileSize) : null,
+    width: m.width ?? null,
+    height: m.height ?? null,
+    capturedAt:
+      capturedAt instanceof Date
+        ? capturedAt.toISOString()
+        : capturedAt
+          ? String(capturedAt)
+          : null,
+    latitude: m.latitude ?? null,
+    longitude: m.longitude ?? null,
+    cameraMake: m.cameraMake ?? null,
+    cameraModel: m.cameraModel ?? null,
+    metadata: m.metadata ?? null,
+  };
 }
